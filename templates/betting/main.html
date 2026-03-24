@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}LowLimit{% endblock %}
+
+{% block body %}
+
+<!-- Banner -->
+{% include "betting/partials/banner.html" %}
+
+<!-- Nav Buttons -->
+<div class="flex gap-3 px-6 py-4 bg-white border-b border-s-blue shadow-sm">
+  <button id="btn-deposit"
+    hx-get="{% url 'deposit_menu' %}"
+    hx-target="#content"
+    hx-swap="innerHTML"
+    onclick="setActive('btn-deposit')"
+    class="nav-btn px-5 py-2 rounded-full text-sm font-semibold border-2 border-tardis text-tardis hover:bg-tardis hover:text-white transition-colors">
+    Deposit Funds
+  </button>
+  <button id="btn-wager"
+    hx-get="{% url 'events_menu' %}"
+    hx-target="#content"
+    hx-swap="innerHTML"
+    onclick="setActive('btn-wager')"
+    class="nav-btn px-5 py-2 rounded-full text-sm font-semibold border-2 border-tardis text-tardis hover:bg-tardis hover:text-white transition-colors">
+    Place Wager
+  </button>
+  <button id="btn-history"
+    hx-get="{% url 'history_menu' %}"
+    hx-target="#content"
+    hx-swap="innerHTML"
+    onclick="setActive('btn-history')"
+    class="nav-btn px-5 py-2 rounded-full text-sm font-semibold border-2 border-tardis text-tardis hover:bg-tardis hover:text-white transition-colors">
+    Wager History
+  </button>
+
+  <!-- Spacer -->
+  <div class="flex-1"></div>
+
+  <!-- Logout -->
+  <a href="{% url 'logout' %}"
+    class="px-5 py-2 rounded-full text-sm font-semibold border-2 border-s-blue text-bleu hover:border-bleu transition-colors">
+    Sign Out
+  </a>
+</div>
+
+<!-- Content Area -->
+<div id="content" class="px-6 py-6 max-w-4xl mx-auto">
+  <div class="text-center text-bleu mt-16 opacity-60">
+    <p class="text-lg font-semibold">Welcome, {{ request.user.username }}!</p>
+    <p class="text-sm mt-1">Select an action above to get started.</p>
+  </div>
+</div>
+
+<!-- Inactivity logout: 30 minutes -->
+<script>
+  let lastActivity = Date.now();
+  const TIMEOUT_MS = 30 * 60 * 1000;
+
+  ['mousemove', 'keydown', 'click', 'scroll', 'touchstart'].forEach(evt =>
+    document.addEventListener(evt, () => lastActivity = Date.now(), { passive: true })
+  );
+  document.addEventListener('htmx:afterRequest', () => lastActivity = Date.now());
+
+  setInterval(() => {
+    if (Date.now() - lastActivity >= TIMEOUT_MS) {
+      window.location.href = "{% url 'logout' %}";
+    }
+  }, 15000);
+
+  function setActive(btnId) {
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.remove('bg-tardis', 'text-white');
+      b.classList.add('text-tardis');
+    });
+    const btn = document.getElementById(btnId);
+    btn.classList.add('bg-tardis', 'text-white');
+    btn.classList.remove('text-tardis');
+  }
+</script>
+{% endblock %}

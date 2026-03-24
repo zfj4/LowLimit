@@ -1,0 +1,64 @@
+{% load betting_tags %}
+<div>
+
+  <h2 class="text-xl font-bold text-tardis mb-4">Wager History</h2>
+
+  {% if not wagers %}
+  <div class="text-center text-bleu py-12 opacity-60">
+    <p class="text-lg font-semibold">No wagers yet.</p>
+    <p class="text-sm mt-1">Head to <strong>Place Wager</strong> to make your first bet.</p>
+  </div>
+  {% else %}
+
+  <div class="space-y-3">
+  {% for wager in wagers %}
+
+  <div class="bg-white rounded-xl border border-s-blue shadow-sm overflow-hidden">
+    <div class="flex items-center justify-between px-4 py-3">
+
+      <!-- Event info -->
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-bold text-tardis truncate">
+          {{ wager.event.away_team }} @ {{ wager.event.home_team }}
+        </p>
+        <p class="text-xs text-bleu mt-0.5">
+          {{ wager.event.event_time|date:"M j, Y · g:i A" }} ET &nbsp;·&nbsp;
+          Picked: <span class="font-semibold">{{ wager.picked_team }}</span>
+        </p>
+        <p class="text-xs text-bleu">
+          Wagered: <span class="font-semibold text-tardis">${{ wager.amount|floatformat:2 }}</span>
+        </p>
+      </div>
+
+      <!-- Status & outcome -->
+      <div class="text-right ml-4 flex-shrink-0">
+        <span class="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase
+          {% if wager.status == 'won' %}bg-green-100 text-green-700
+          {% elif wager.status == 'lost' %}bg-red-50 text-red-600
+          {% elif wager.status == 'push' %}bg-yellow-50 text-yellow-700
+          {% else %}bg-pale-blue text-bleu{% endif %}">
+          {{ wager.get_status_display }}
+        </span>
+
+        {% if wager.status == 'won' %}
+        <p class="text-xs text-green-700 font-semibold mt-1">+${{ wager.payout|floatformat:2 }}</p>
+        {% elif wager.status == 'lost' %}
+        <p class="text-xs text-red-600 font-semibold mt-1">-${{ wager.amount|floatformat:2 }}</p>
+        {% elif wager.status == 'push' %}
+        <p class="text-xs text-yellow-700 font-semibold mt-1">$0.00</p>
+        {% else %}
+        <p class="text-xs text-bleu mt-1">${{ wager.amount|floatformat:2 }} at stake</p>
+        {% endif %}
+
+        <p class="text-xs text-bleu opacity-60 mt-0.5">{{ wager.created_at|date:"M j" }}</p>
+      </div>
+
+    </div>
+  </div>
+
+  {% endfor %}
+  </div>
+
+  {% endif %}
+
+</div>

@@ -1,0 +1,144 @@
+{% load betting_tags %}
+<div>
+
+  <!-- Header -->
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold text-tardis">NCAA Basketball — This Week</h2>
+    <button hx-get="{% url 'events_menu' %}?refresh=1"
+            hx-target="#content"
+            hx-swap="innerHTML"
+            class="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold border-2 border-bleu text-bleu hover:bg-bleu hover:text-white transition-colors">
+      ↻ Reload Games
+    </button>
+  </div>
+
+  <!-- Balance -->
+  <p class="text-sm text-bleu mb-4">
+    Available balance: <span class="font-bold text-tardis">${{ balance|floatformat:2 }}</span>
+  </p>
+
+  <!-- Alerts -->
+  {% if wager_error %}
+  <div class="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{{ wager_error }}</div>
+  {% endif %}
+  {% if wager_success %}
+  <div class="mb-4 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">{{ wager_success }}</div>
+  {% endif %}
+
+  {% if not events %}
+  <div class="text-center text-bleu py-12 opacity-60">
+    <p class="text-lg font-semibold">No games available.</p>
+    <p class="text-sm mt-1">Click "Reload Games" to generate this week's list.</p>
+  </div>
+  {% else %}
+
+  {% regroup events by gender as gender_groups %}
+  {% for group in gender_groups %}
+
+    <h3 class="text-xs font-bold text-bleu uppercase tracking-widest mb-3 {% if not forloop.first %}mt-8{% endif %}">
+      {% if group.grouper == 'M' %}Men's Basketball{% else %}Women's Basketball{% endif %}
+    </h3>
+
+    <div class="space-y-4">
+    {% for event in group.list %}
+    {% with my_wager=user_wagers|get_item:event.id %}
+
+    <div class="bg-white rounded-xl border border-s-blue shadow-sm overflow-hidden">
+
+      <!-- Game header bar -->
+      <div class="bg-nw-blue px-4 py-2 flex items-center justify-between">
+        <span class="text-xs font-semibold text-bleu">
+          {{ event.event_time|date:"D, M j" }} · {{ event.event_time|date:"g:i A" }} ET
+        </span>
+        <span class="text-xs px-2 py-0.5 rounded-full font-semibold
+          {% if event.status == 'upcoming' %}bg-green-100 text-green-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          {{ event.get_status_display }}
+        </span>
+      </div>
+
+      <div class="px-4 py-4">
+
+        <!-- Teams & Spread table -->
+        <div class="grid grid-cols-2 gap-4 mb-4 text-center">
+          <div>
+            <p class="font-bold text-tardis">{{ event.away_team }}</p>
+            <p class="text-xs text-bleu mt-0.5">
+              Away &nbsp;·&nbsp; Spread:
+              {% with s=event.spread %}
+                {% if s < 0 %}<span class="font-semibold">+{{ s|abs_value }}</span>
+                {% elif s > 0 %}<span class="font-semibold">-{{ s }}</span>
+                {% else %}<span class="font-semibold">PK</span>{% endif %}
+              {% endwith %}
+            </p>
+            <p class="text-xs text-bleu">Odds: {{ event.away_odds }}</p>
+          </div>
+          <div>
+            <p class="font-bold text-tardis">{{ event.home_team }}</p>
+            <p class="text-xs text-bleu mt-0.5">
+              Home &nbsp;·&nbsp; Spread:
+              {% with s=event.spread %}
+                {% if s < 0 %}<span class="font-semibold">{{ s }}</span>
+                {% elif s > 0 %}<span class="font-semibold">+{{ s }}</span>
+                {% else %}<span class="font-semibold">PK</span>{% endif %}
+              {% endwith %}
+            </p>
+            <p class="text-xs text-bleu">Odds: {{ event.home_odds }}</p>
+          </div>
+        </div>
+
+        <!-- Final score (if applicable) -->
+        {% if event.status == 'final' and event.home_score is not None %}
+        <div class="mb-3 text-center text-sm font-semibold text-tardis">
+          Final: {{ event.away_team }} {{ event.away_score }} – {{ event.home_team }} {{ event.home_score }}
+        </div>
+        {% endif %}
+
+        <!-- Wager section -->
+        {% if my_wager %}
+          <div class="bg-pale-blue rounded-lg px-4 py-3 text-sm text-tardis">
+            <span class="font-semibold">Your wager:</span>
+            ${{ my_wager.amount|floatformat:2 }} on <span class="font-semibold">{{ my_wager.picked_team }}</span>
+            &nbsp;·&nbsp;
+            <span class="{% if my_wager.status == 'won' %}text-green-700{% elif my_wager.status == 'lost' %}text-red-600{% else %}text-bleu{% endif %} font-semibold text-xs uppercase">
+              {{ my_wager.get_status_display }}
+            </span>
+          </div>
+        {% elif event.status == 'upcoming' %}
+          <form hx-post="{% url 'place_wager' %}"
+                hx-target="#content"
+                hx-swap="innerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="event_id" value="{{ event.id }}" />
+            <div class="flex flex-wrap gap-3 items-center">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="pick" value="away" required class="accent-bleu" />
+                <span class="text-sm text-tardis font-medium">{{ event.away_team }}</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input type="radio" name="pick" value="home" required class="accent-bleu" />
+                <span class="text-sm text-tardis font-medium">{{ event.home_team }}</span>
+              </label>
+              <input type="number" name="amount" min="0.01" step="0.01"
+                placeholder="Amount $"
+                class="w-28 px-3 py-1.5 rounded-lg border border-s-blue focus:outline-none focus:ring-2 focus:ring-bleu bg-nw-blue text-tardis text-sm" />
+              <button type="submit"
+                class="px-4 py-1.5 rounded-lg bg-p-orange hover:bg-p-orange-h text-white font-semibold text-sm transition-colors">
+                Place Wager
+              </button>
+            </div>
+          </form>
+        {% else %}
+          <p class="text-xs text-bleu italic">Wagering closed for this game.</p>
+        {% endif %}
+
+      </div>
+    </div>
+
+    {% endwith %}
+    {% endfor %}
+    </div>
+
+  {% endfor %}
+  {% endif %}
+
+</div>

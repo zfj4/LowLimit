@@ -1,0 +1,55 @@
+<div class="bg-white rounded-2xl border border-s-blue shadow-sm p-6 max-w-md">
+
+  <h2 class="text-xl font-bold text-tardis mb-4">Deposit Funds</h2>
+
+  <!-- Weekly progress -->
+  <div class="mb-6">
+    <div class="flex justify-between text-sm mb-1">
+      <span class="text-bleu font-semibold">This week's deposits</span>
+      <span class="text-tardis font-bold">${{ weekly_deposited|floatformat:2 }} / ${{ weekly_limit|floatformat:2 }}</span>
+    </div>
+    {% with pct=weekly_deposited|floatformat:0 %}
+    <div class="h-3 rounded-full bg-vl-blue overflow-hidden">
+      <div class="h-full rounded-full bg-bleu transition-all"
+        style="width: {% widthratio weekly_deposited weekly_limit 100 %}%"></div>
+    </div>
+    {% endwith %}
+    <p class="text-xs text-bleu mt-1">
+      {% if weekly_remaining > 0 %}
+        ${{ weekly_remaining|floatformat:2 }} available to deposit this week
+      {% else %}
+        You've reached your ${{ weekly_limit|floatformat:2 }} weekly limit.
+      {% endif %}
+    </p>
+  </div>
+
+  <!-- Alerts -->
+  {% if error %}
+  <div class="mb-4 px-4 py-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">{{ error }}</div>
+  {% endif %}
+  {% if success %}
+  <div class="mb-4 px-4 py-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">{{ success }}</div>
+  {% endif %}
+
+  <!-- Deposit form -->
+  {% if weekly_remaining > 0 %}
+  <form hx-post="{% url 'process_deposit' %}"
+        hx-target="#content"
+        hx-swap="innerHTML">
+    {% csrf_token %}
+    <div class="flex gap-3 items-end">
+      <div class="flex-1">
+        <label class="block text-xs font-semibold text-bleu uppercase tracking-wide mb-1">Amount ($)</label>
+        <input type="number" name="amount" min="0.01" max="{{ weekly_remaining }}" step="0.01"
+          placeholder="0.00"
+          class="w-full px-4 py-2 rounded-lg border border-s-blue focus:outline-none focus:ring-2 focus:ring-bleu bg-nw-blue text-tardis text-sm" />
+      </div>
+      <button type="submit"
+        class="px-6 py-2 rounded-lg bg-p-orange hover:bg-p-orange-h text-white font-semibold text-sm transition-colors">
+        Deposit
+      </button>
+    </div>
+  </form>
+  {% endif %}
+
+</div>

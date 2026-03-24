@@ -1,0 +1,36 @@
+<div id="banner" {% if oob %}hx-swap-oob="true"{% endif %}
+  class="bg-tardis text-white px-6 py-4 flex flex-wrap items-center justify-between gap-4 shadow-md">
+
+  <!-- Balance -->
+  <div class="flex items-center gap-6">
+    <div>
+      <p class="text-xs text-pale-blue uppercase tracking-widest font-semibold">Balance</p>
+      <p class="text-2xl font-bold">${{ balance|floatformat:2 }}</p>
+    </div>
+
+    {% if wager_count > 0 %}
+    <div class="border-l border-pale-blue pl-6">
+      <p class="text-xs text-pale-blue uppercase tracking-widest font-semibold">Wagered</p>
+      <p class="text-lg font-semibold">
+        ${{ wagered_amount|floatformat:2 }}
+        <span class="text-sm font-normal text-pale-blue">on {{ wager_count }} event{{ wager_count|pluralize }}</span>
+      </p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Weekly deposit info -->
+  <div class="text-right">
+    <p class="text-xs text-pale-blue uppercase tracking-widest font-semibold">This Week</p>
+    <p class="text-sm">
+      <span class="font-semibold">${{ weekly_deposited|floatformat:2 }}</span>
+      <span class="text-pale-blue"> / ${{ weekly_limit|floatformat:2 }} deposited</span>
+    </p>
+    {% if weekly_remaining > 0 %}
+    <p class="text-xs text-pale-blue">${{ weekly_remaining|floatformat:2 }} remaining</p>
+    {% else %}
+    <p class="text-xs text-p-orange font-semibold">Weekly limit reached</p>
+    {% endif %}
+  </div>
+
+</div>
