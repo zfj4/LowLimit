@@ -1,0 +1,12 @@
+Name,Hex,R,G,B,Role,Uses
+Tardis Blue,#003B6F,0,59,111,Dominant — bold elements,Header/banner background; sidebar background; primary headings; dark text labels on light backgrounds
+Bleu de France,#318CE7,49,140,231,Medium accent,Secondary headings; form labels; links; input focus rings; sidebar hover state
+Powdery Orange,#E0A07A,224,160,122,Action accent,Run Analysis and Load File button backgrounds
+Powdery Orange (hover),#C07D55,192,125,85,Action accent — hover,Button hover state
+Dark Orange,#B84A0A,184,74,10,Significance highlight,Significant p-values text (conditional — displayed only when p < 0.05)
+Light Powdery Blue,#DCE9F5,220,233,245,Page background,Body background color
+Soft Blue,#AECDE8,174,205,232,Muted border / accent,Card borders; table dividers; sidebar section header text; focus rings
+Medium Light Blue,#96BFE0,150,191,224,Stronger border,Card borders (stronger); Total column header border; Choose File button hover
+Pale Blue,#BDD8F2,189,216,242,Light on dark / surface,Sidebar nav text; Choose File button background; success banner background
+Very Light Blue,#D6E8F5,214,232,245,Row divider,Table row border/divider color
+Near-White Blue,#EBF4FC,235,244,252,Row tint,Alternating row background tint in data tables

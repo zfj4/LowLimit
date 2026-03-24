@@ -1,0 +1,39 @@
+LowLimit
+
+Full title: Low Limit Sports Betting Application
+
+This shall be a single-page sport betting application that limits the amount of weekly money that
+a user can add to their account. For the purposes of this application, a week will begin and end
+at 12:01 AM Pacific Time (adjusting for daylight saving time) on Mondays. The user will be able to
+wager up the amount of money in their account, which may include multiple weeks of deposits and
+winnings, on one or more sporting events. The user will be able to view their account balance,
+the amount of money they have deposited in the current week, outstanding wagers, and the results
+of past wagers.
+
+The application will be built using the following tech stack: HTMX, Tailwind CSS, Django, PostgreSQL
+
+Requirements:
+
+Version 0.1.0:
+* The weekly deposit limit shall be $10.
+* The application shall initially not use real money, but instead use virtual dollars.
+* So a user shall be able to deposit 10 virtual dollars per week, as described above.
+* Money shall be deducted from a user's account balance when they place a wager, and added to their account balance when a wager is settled in their favor.
+* The application shall have a login screen that allows users to create an account and log in.
+* The application shall automatically log out users after 30 minutes of inactivity.
+* This shall be a single page application, so all interactions shall occur on the same page using hx-swap without full page reloads.
+* The application shall have a banner that displays the user's account balance and the amount of money that is currently wagered on how many events.
+* After successful login, the user shall be taken to the main page of the application where they will see the banner and have buttons to display menus for taking actions.
+* There shall be a button to display a "Deposit Funds" menu that allows the user to deposit virtual dollars into their account, up to the weekly limit.
+* There shall be a button to display a "Place Wager" menu that allows the user to view a list of upcoming sporting events with point spreads or odds during the current week, and place wagers on those events using the virtual dollars in their account.
+* Use AI to generate lists of upcoming sporting events with point spreads or odds during the current week, and update those lists only when re-loaded.
+* For this initial version, only show upcoming NCAA Division I men's and women's basketball games.
+* There shall be a button to display a "Wager History" menu that allows the user to view their past wagers (settled and unsettled), including the amount wagered, the event, the outcome, and the resulting change in their account balance.
+* The process for downloading and setting up this application shall be the same as for the other application whose partial README is at this project's root.
+* http://127.0.0.1:8000 and http://127.0.0.1:9000 are currently in use for other applications, so this application shall run on a different port.
+* Build the initially-empty dependencies.txt file with the dependencies for this application.
+* Maintain user, balance, and wager data in a PostgreSQL database.
+* Use the colors listed in utilities/color_palette.csv for the application's color scheme, with Tardis Blue as the primary color, and use Tailwind CSS to implement that color scheme in the application's styling.
+* Make a git repository for this application at https://github.com/zfj4/LowLimit and push the initial code to that repository.
+* Upon completion of this initial version, update the README with download and setup instructions for this application, rather than the one in the current README.
+* Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
