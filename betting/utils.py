@@ -93,11 +93,11 @@ def settle_wager(wager):
 
 
 def generate_events():
-    """Call Claude to produce a list of NCAA D1 basketball game dicts for the current week."""
-    import anthropic
+    """Call Gemini to produce a list of NCAA D1 basketball game dicts for the current week."""
+    import google.genai as genai
     from datetime import date
 
-    client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+    client = genai.Client(api_key=settings.GOOGLE_API_KEY)
     today = date.today()
     week_end = today + timedelta(days=6 - today.weekday())
 
@@ -118,12 +118,11 @@ def generate_events():
         "spread across the week."
     )
 
-    message = client.messages.create(
-        model="claude-opus-4-6",
-        max_tokens=3000,
-        messages=[{"role": "user", "content": prompt}],
+    response = client.models.generate_content(
+        model='gemini-2.0-flash',
+        contents=prompt,
     )
-    text = message.content[0].text.strip()
+    text = response.text.strip()
     # Strip accidental markdown code fences
     if text.startswith('```'):
         parts = text.split('```')

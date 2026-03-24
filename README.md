@@ -23,9 +23,9 @@ Open your terminal, navigate to the project root folder and run:
 
 ### 3. Configure Environment Variables
 * Copy `.env.example` to `.env`: `cp .env.example .env`
-* Open `.env` and set your **Anthropic API key** (required for AI-generated game lists):
+* Open `.env` and set your **Google API key** (required for AI-generated game lists):
   ```
-  ANTHROPIC_API_KEY=sk-ant-...
+  GOOGLE_API_KEY=your-google-api-key-here
   ```
 * The other values can stay as-is for local development.
 
