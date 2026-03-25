@@ -15,6 +15,9 @@ from betting.utils import (
     get_weekly_remaining,
     get_banner_context,
     settle_wager,
+    fetch_espn_schedule,
+    generate_odds_for_games,
+    generate_events,
     WEEKLY_LIMIT,
 )
 
@@ -236,3 +239,274 @@ class TestSettleWager:
         settle_wager(wager)
         wager.refresh_from_db()
         assert wager.settled_at is not None
+
+
+# ---------------------------------------------------------------------------
+# v0.2.1 — ESPN schedule scraping + AI odds
+# ---------------------------------------------------------------------------
+
+ESPN_MENS_RESPONSE = {
+    "events": [
+        {
+            "id": "401234567",
+            "date": "2025-03-25T23:00Z",
+            "name": "Duke Blue Devils at North Carolina Tar Heels",
+            "competitions": [
+                {
+                    "competitors": [
+                        {
+                            "homeAway": "home",
+                            "team": {"displayName": "North Carolina Tar Heels"},
+                        },
+                        {
+                            "homeAway": "away",
+                            "team": {"displayName": "Duke Blue Devils"},
+                        },
+                    ],
+                    "status": {"type": {"name": "STATUS_SCHEDULED", "completed": False}},
+                }
+            ],
+        }
+    ]
+}
+
+ESPN_WOMENS_RESPONSE = {
+    "events": [
+        {
+            "id": "401234568",
+            "date": "2025-03-26T01:00Z",
+            "name": "South Carolina Gamecocks at LSU Tigers",
+            "competitions": [
+                {
+                    "competitors": [
+                        {
+                            "homeAway": "home",
+                            "team": {"displayName": "LSU Tigers"},
+                        },
+                        {
+                            "homeAway": "away",
+                            "team": {"displayName": "South Carolina Gamecocks"},
+                        },
+                    ],
+                    "status": {"type": {"name": "STATUS_SCHEDULED", "completed": False}},
+                }
+            ],
+        }
+    ]
+}
+
+
+class TestFetchEspnSchedule:
+    """fetch_espn_schedule() returns real game data from ESPN's public API."""
+
+    def _make_mock_response(self, json_data):
+        mock = MagicMock()
+        mock.json.return_value = json_data
+        mock.raise_for_status.return_value = None
+        return mock
+
+    @patch('requests.get')
+    def test_returns_list_of_games(self, mock_get):
+        mock_get.side_effect = [
+            self._make_mock_response(ESPN_MENS_RESPONSE),
+            self._make_mock_response(ESPN_WOMENS_RESPONSE),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert isinstance(games, list)
+        assert len(games) == 2
+
+    @patch('requests.get')
+    def test_game_has_required_fields(self, mock_get):
+        mock_get.side_effect = [
+            self._make_mock_response(ESPN_MENS_RESPONSE),
+            self._make_mock_response({'events': []}),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        game = games[0]
+        assert 'home_team' in game
+        assert 'away_team' in game
+        assert 'event_datetime' in game
+        assert 'gender' in game
+
+    @patch('requests.get')
+    def test_mens_games_have_gender_M(self, mock_get):
+        mock_get.side_effect = [
+            self._make_mock_response(ESPN_MENS_RESPONSE),
+            self._make_mock_response({'events': []}),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games[0]['gender'] == 'M'
+
+    @patch('requests.get')
+    def test_womens_games_have_gender_W(self, mock_get):
+        mock_get.side_effect = [
+            self._make_mock_response({'events': []}),
+            self._make_mock_response(ESPN_WOMENS_RESPONSE),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games[0]['gender'] == 'W'
+
+    @patch('requests.get')
+    def test_correct_home_away_teams(self, mock_get):
+        mock_get.side_effect = [
+            self._make_mock_response(ESPN_MENS_RESPONSE),
+            self._make_mock_response({'events': []}),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games[0]['home_team'] == 'North Carolina Tar Heels'
+        assert games[0]['away_team'] == 'Duke Blue Devils'
+
+    @patch('requests.get')
+    def test_handles_empty_response(self, mock_get):
+        mock_get.side_effect = [
+            self._make_mock_response({'events': []}),
+            self._make_mock_response({'events': []}),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games == []
+
+    @patch('requests.get')
+    def test_handles_request_error_gracefully(self, mock_get):
+        import requests as req_lib
+        mock_get.side_effect = req_lib.RequestException("Network error")
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games == []
+
+    @patch('requests.get')
+    def test_skips_non_scheduled_games(self, mock_get):
+        """Games already in progress or finished should not be included."""
+        finished_event = {
+            "events": [
+                {
+                    "id": "401234569",
+                    "date": "2025-03-24T20:00Z",
+                    "name": "Team A at Team B",
+                    "competitions": [
+                        {
+                            "competitors": [
+                                {"homeAway": "home", "team": {"displayName": "Team B"}},
+                                {"homeAway": "away", "team": {"displayName": "Team A"}},
+                            ],
+                            "status": {"type": {"name": "STATUS_FINAL", "completed": True}},
+                        }
+                    ],
+                }
+            ]
+        }
+        mock_get.side_effect = [
+            self._make_mock_response(finished_event),
+            self._make_mock_response({'events': []}),
+        ]
+        from datetime import date
+        games = fetch_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games == []
+
+
+class TestGenerateOddsForGames:
+    """generate_odds_for_games() uses AI to add spreads/odds to real game data."""
+
+    SAMPLE_GAMES = [
+        {'home_team': 'North Carolina Tar Heels', 'away_team': 'Duke Blue Devils',
+         'event_datetime': '2025-03-25T23:00Z', 'gender': 'M'},
+        {'home_team': 'LSU Tigers', 'away_team': 'South Carolina Gamecocks',
+         'event_datetime': '2025-03-26T01:00Z', 'gender': 'W'},
+    ]
+
+    @patch('google.genai.Client')
+    def test_returns_games_with_odds(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.text = '[{"spread": -4.5, "home_odds": -110, "away_odds": -110}, {"spread": -3.5, "home_odds": -115, "away_odds": -105}]'
+        mock_client.models.generate_content.return_value = mock_response
+
+        result = generate_odds_for_games(self.SAMPLE_GAMES)
+        assert len(result) == 2
+        assert 'spread' in result[0]
+        assert 'home_odds' in result[0]
+        assert 'away_odds' in result[0]
+
+    @patch('google.genai.Client')
+    def test_preserves_game_fields(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.text = '[{"spread": -4.5, "home_odds": -110, "away_odds": -110}]'
+        mock_client.models.generate_content.return_value = mock_response
+
+        result = generate_odds_for_games(self.SAMPLE_GAMES[:1])
+        assert result[0]['home_team'] == 'North Carolina Tar Heels'
+        assert result[0]['away_team'] == 'Duke Blue Devils'
+        assert result[0]['gender'] == 'M'
+
+    @patch('google.genai.Client')
+    def test_handles_empty_game_list(self, mock_client_cls):
+        result = generate_odds_for_games([])
+        assert result == []
+
+    @patch('google.genai.Client')
+    def test_uses_default_odds_on_ai_failure(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.models.generate_content.side_effect = Exception("API error")
+
+        result = generate_odds_for_games(self.SAMPLE_GAMES[:1])
+        assert len(result) == 1
+        assert result[0]['home_odds'] == -110
+        assert result[0]['away_odds'] == -110
+
+    @patch('google.genai.Client')
+    def test_uses_default_odds_on_bad_json(self, mock_client_cls):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.text = 'Sorry, I cannot provide that.'
+        mock_client.models.generate_content.return_value = mock_response
+
+        result = generate_odds_for_games(self.SAMPLE_GAMES[:1])
+        assert len(result) == 1
+        assert result[0]['spread'] == 0
+
+
+class TestGenerateEvents:
+    """generate_events() combines ESPN schedule with AI-generated odds."""
+
+    @patch('betting.utils.generate_odds_for_games')
+    @patch('betting.utils.fetch_espn_schedule')
+    def test_calls_espn_schedule(self, mock_fetch, mock_odds):
+        mock_fetch.return_value = []
+        mock_odds.return_value = []
+        generate_events()
+        assert mock_fetch.called
+
+    @patch('betting.utils.generate_odds_for_games')
+    @patch('betting.utils.fetch_espn_schedule')
+    def test_calls_generate_odds_with_espn_games(self, mock_fetch, mock_odds):
+        espn_games = [
+            {'home_team': 'Team A', 'away_team': 'Team B',
+             'event_datetime': '2025-03-25T23:00Z', 'gender': 'M'},
+        ]
+        mock_fetch.return_value = espn_games
+        mock_odds.return_value = espn_games
+        generate_events()
+        mock_odds.assert_called_once_with(espn_games)
+
+    @patch('betting.utils.generate_odds_for_games')
+    @patch('betting.utils.fetch_espn_schedule')
+    def test_returns_combined_result(self, mock_fetch, mock_odds):
+        espn_games = [
+            {'home_team': 'Team A', 'away_team': 'Team B',
+             'event_datetime': '2025-03-25T23:00Z', 'gender': 'M'},
+        ]
+        games_with_odds = [dict(espn_games[0], spread=-3.5, home_odds=-110, away_odds=-110)]
+        mock_fetch.return_value = espn_games
+        mock_odds.return_value = games_with_odds
+        result = generate_events()
+        assert result == games_with_odds

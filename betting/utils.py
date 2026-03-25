@@ -1,8 +1,10 @@
 import json
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytz
+import requests
 from django.conf import settings
 from django.db.models import Sum
 from django.utils import timezone
@@ -92,44 +94,135 @@ def settle_wager(wager):
     wager.save()
 
 
-def generate_events():
-    """Call Gemini to produce a list of NCAA D1 basketball game dicts for the current week."""
+def fetch_espn_schedule(start_date, end_date):
+    """Fetch real NCAA basketball game schedules from ESPN's public API."""
+    games = []
+    endpoints = [
+        ('mens-college-basketball', 'M'),
+        ('womens-college-basketball', 'W'),
+    ]
+
+    # ESPN only accepts one date at a time — iterate through each day in the range
+    dates = []
+    current = start_date
+    while current <= end_date:
+        dates.append(current)
+        current += timedelta(days=1)
+
+    for sport_slug, gender in endpoints:
+        url = (
+            f"https://site.api.espn.com/apis/site/v2/sports/basketball"
+            f"/{sport_slug}/scoreboard"
+        )
+        for query_date in dates:
+            try:
+                resp = requests.get(
+                    url,
+                    params={'dates': query_date.strftime('%Y%m%d'), 'limit': 100},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception:
+                continue
+
+            for event in data.get('events', []):
+                try:
+                    competition = event['competitions'][0]
+                    status_name = (
+                        competition.get('status', {})
+                        .get('type', {})
+                        .get('name', '')
+                    )
+                    if status_name != 'STATUS_SCHEDULED':
+                        continue
+
+                    home_team = None
+                    away_team = None
+                    for comp in competition['competitors']:
+                        if comp['homeAway'] == 'home':
+                            home_team = comp['team']['displayName']
+                        else:
+                            away_team = comp['team']['displayName']
+
+                    if not home_team or not away_team:
+                        continue
+                    if home_team == 'TBD' or away_team == 'TBD':
+                        continue
+
+                    games.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'event_datetime': event['date'],
+                        'gender': gender,
+                    })
+                except (KeyError, IndexError):
+                    continue
+
+    return games
+
+
+def generate_odds_for_games(games):
+    """Use Gemini to generate spreads and odds for a list of real game dicts."""
     import google.genai as genai
-    from datetime import date
+
+    if not games:
+        return []
 
     client = genai.Client(api_key=settings.GOOGLE_API_KEY)
+    game_list = '\n'.join(
+        f"- {g['away_team']} @ {g['home_team']} ({g['gender']})"
+        for g in games
+    )
+    prompt = (
+        "For each NCAA basketball game below, provide a realistic point spread and American odds. "
+        "Return ONLY a JSON array — no markdown, no explanation. "
+        "The array must have exactly the same number of elements as games, in the same order. "
+        "Each object must have:\n"
+        "- spread: number (negative = home favored, e.g. -4.5)\n"
+        "- home_odds: integer (e.g. -110)\n"
+        "- away_odds: integer (e.g. -110)\n\n"
+        f"Games:\n{game_list}"
+    )
+
+    try:
+        response = client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=prompt,
+        )
+        text = response.text.strip()
+        match = re.search(r'\[.*\]', text, re.DOTALL)
+        if match:
+            odds_list = json.loads(match.group(0))
+        else:
+            odds_list = []
+    except Exception:
+        odds_list = []
+
+    result = []
+    for i, game in enumerate(games):
+        if i < len(odds_list):
+            odds = odds_list[i]
+            result.append(dict(
+                game,
+                spread=odds.get('spread', 0),
+                home_odds=int(odds.get('home_odds', -110)),
+                away_odds=int(odds.get('away_odds', -110)),
+            ))
+        else:
+            result.append(dict(game, spread=0, home_odds=-110, away_odds=-110))
+
+    return result
+
+
+def generate_events():
+    """Fetch real NCAA games from ESPN and add AI-generated odds."""
+    from datetime import date
+
     today = date.today()
     week_end = today + timedelta(days=6 - today.weekday())
-
-    prompt = (
-        f"Generate a realistic list of 12 upcoming NCAA Division I basketball games for the week of "
-        f"{today.strftime('%B %d, %Y')} through {week_end.strftime('%B %d, %Y')}. "
-        "Include a mix of men's and women's games from various conferences "
-        "(ACC, Big Ten, SEC, Big 12, Pac-12, Big East, etc.).\n\n"
-        "Return ONLY a JSON array — no markdown fences, no explanation. Each object must have:\n"
-        '- home_team: string (e.g. "Duke Blue Devils")\n'
-        "- away_team: string\n"
-        "- event_datetime: string (ISO 8601, Eastern Time, e.g. \"2024-03-18T19:00:00\")\n"
-        "- spread: number (negative = home favored, e.g. -4.5 means home gives 4.5 points)\n"
-        "- home_odds: integer (American odds, typically -110)\n"
-        "- away_odds: integer (American odds, typically -110)\n"
-        '- gender: string ("M" for men\'s, "W" for women\'s)\n\n'
-        "Use realistic team names, spreads between -15.5 and +15.5, game times 11:00–22:00 ET, "
-        "spread across the week."
-    )
-
-    response = client.models.generate_content(
-        model='gemini-2.0-flash',
-        contents=prompt,
-    )
-    text = response.text.strip()
-    # Strip accidental markdown code fences
-    if text.startswith('```'):
-        parts = text.split('```')
-        text = parts[1]
-        if text.startswith('json'):
-            text = text[4:]
-    return json.loads(text.strip())
+    games = fetch_espn_schedule(today, week_end)
+    return generate_odds_for_games(games)
 
 
 def get_or_generate_events(force_refresh=False):
@@ -153,9 +246,11 @@ def get_or_generate_events(force_refresh=False):
     for game in games:
         try:
             dt_str = game['event_datetime']
-            naive_dt = datetime.fromisoformat(dt_str)
-            aware_dt = eastern.localize(naive_dt)
-            utc_dt = aware_dt.astimezone(pytz.utc)
+            parsed_dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            if parsed_dt.tzinfo is None:
+                eastern = pytz.timezone('America/New_York')
+                parsed_dt = eastern.localize(parsed_dt)
+            utc_dt = parsed_dt.astimezone(pytz.utc)
             SportingEvent.objects.create(
                 home_team=game['home_team'],
                 away_team=game['away_team'],

@@ -5,29 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}LowLimit{% endblock %}</title>
 
-  <!-- Tailwind CSS Play CDN with custom color palette -->
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            'tardis':    '#003B6F',
-            'bleu':      '#318CE7',
-            'p-orange':  '#E0A07A',
-            'p-orange-h':'#C07D55',
-            'd-orange':  '#B84A0A',
-            'lp-blue':   '#DCE9F5',
-            's-blue':    '#AECDE8',
-            'ml-blue':   '#96BFE0',
-            'pale-blue': '#BDD8F2',
-            'vl-blue':   '#D6E8F5',
-            'nw-blue':   '#EBF4FC',
-          }
-        }
-      }
-    }
-  </script>
+  <!-- Tailwind CSS Play CDN (layout, spacing, typography utilities) -->
   <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Custom color palette — defined as plain CSS so they work regardless of CDN version -->
+  <style>
+    /* ── Tardis Blue ── */
+    .bg-tardis          { background-color: #003B6F; }
+    .text-tardis        { color: #003B6F; }
+    .border-tardis      { border-color: #003B6F; }
+    .hover\:bg-tardis:hover   { background-color: #003B6F; }
+    .hover\:text-tardis:hover { color: #003B6F; }
+
+    /* ── Bleu de France ── */
+    .bg-bleu            { background-color: #318CE7; }
+    .text-bleu          { color: #318CE7; }
+    .border-bleu        { border-color: #318CE7; }
+    .hover\:bg-bleu:hover   { background-color: #318CE7; }
+    .hover\:text-bleu:hover { color: #318CE7; }
+    .focus\:ring-bleu:focus {
+      --tw-ring-color: #318CE7;
+      box-shadow: var(--tw-ring-inset,) 0 0 0 calc(2px + var(--tw-ring-offset-width, 0px)) #318CE7;
+    }
+    .accent-bleu        { accent-color: #318CE7; }
+
+    /* ── Powdery Orange (action buttons) ── */
+    .bg-p-orange               { background-color: #E0A07A; }
+    .hover\:bg-p-orange-h:hover { background-color: #C07D55; }
+
+    /* ── Dark Orange (significance) ── */
+    .text-d-orange      { color: #B84A0A; }
+
+    /* ── Light Powdery Blue (page background) ── */
+    .bg-lp-blue         { background-color: #DCE9F5; }
+
+    /* ── Soft Blue ── */
+    .bg-s-blue          { background-color: #AECDE8; }
+    .border-s-blue      { border-color: #AECDE8; }
+
+    /* ── Medium Light Blue ── */
+    .bg-ml-blue         { background-color: #96BFE0; }
+    .border-ml-blue     { border-color: #96BFE0; }
+
+    /* ── Pale Blue ── */
+    .text-pale-blue     { color: #BDD8F2; }
+    .bg-pale-blue       { background-color: #BDD8F2; }
+    .border-pale-blue   { border-color: #BDD8F2; }
+    .hover\:bg-pale-blue:hover { background-color: #BDD8F2; }
+
+    /* ── Very Light Blue ── */
+    .bg-vl-blue         { background-color: #D6E8F5; }
+
+    /* ── Near-White Blue ── */
+    .bg-nw-blue         { background-color: #EBF4FC; }
+    .hover\:bg-nw-blue:hover { background-color: #EBF4FC; }
+  </style>
+
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body class="bg-lp-blue min-h-screen font-sans">

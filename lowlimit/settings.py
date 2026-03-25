@@ -81,6 +81,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Session: 30-minute inactivity timeout
 SESSION_COOKIE_AGE = 1800
 SESSION_SAVE_EVERY_REQUEST = True
+# Unique cookie names so this app doesn't conflict with other apps on 127.0.0.1
+SESSION_COOKIE_NAME = 'lowlimit_sessionid'
+CSRF_COOKIE_NAME = 'lowlimit_csrftoken'
 
 LOGIN_URL = '/login/'
 LOGIN_REDIRECT_URL = '/'

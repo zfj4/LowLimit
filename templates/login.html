@@ -60,6 +60,18 @@
         <form id="form-register" method="post" action="{% url 'login' %}" class="hidden">
           {% csrf_token %}
           <input type="hidden" name="action" value="register" />
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <div>
+              <label class="block text-xs font-semibold text-bleu uppercase tracking-wide mb-1">First Name</label>
+              <input type="text" name="first_name" autocomplete="given-name"
+                class="w-full px-4 py-2 rounded-lg border border-s-blue focus:outline-none focus:ring-2 focus:ring-bleu bg-nw-blue text-tardis text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-bleu uppercase tracking-wide mb-1">Last Name</label>
+              <input type="text" name="last_name" autocomplete="family-name"
+                class="w-full px-4 py-2 rounded-lg border border-s-blue focus:outline-none focus:ring-2 focus:ring-bleu bg-nw-blue text-tardis text-sm" />
+            </div>
+          </div>
           <div class="mb-4">
             <label class="block text-xs font-semibold text-bleu uppercase tracking-wide mb-1">Choose a Username</label>
             <input type="text" name="username" required autocomplete="username"

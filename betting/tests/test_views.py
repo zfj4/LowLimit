@@ -202,7 +202,7 @@ class TestEventsMenuView:
     @patch('betting.utils.generate_events')
     def test_returns_200_and_shows_events(self, mock_generate, logged_in_client, upcoming_event):
         mock_generate.return_value = []
-        response = logged_in_client.get(reverse('events_menu'))
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
         assert response.status_code == 200
         assert b'Duke Blue Devils' in response.content
 
@@ -300,3 +300,222 @@ class TestHistoryMenuView:
         response = logged_in_client.get(reverse('history_menu'))
         # The logged-in user has no wagers — their history should show empty state
         assert Wager.objects.filter(user__username='viewtest').count() == 0
+
+
+# ---------------------------------------------------------------------------
+# v0.1.1 — Banner title and Place Bet buttons
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestBannerTitle:
+    """Banner displays 'Low Limit Sports Betting' as a link to the main page."""
+
+    def test_main_page_has_banner_title(self, logged_in_client):
+        response = logged_in_client.get(reverse('main'))
+        assert b'Low Limit Sports Betting' in response.content
+
+    def test_banner_title_links_to_main(self, logged_in_client):
+        response = logged_in_client.get(reverse('main'))
+        main_url = reverse('main').encode()
+        assert main_url in response.content
+
+    def test_login_page_has_submit_buttons(self, client):
+        response = client.get(reverse('login'))
+        assert b'Sign In' in response.content
+        assert b'Create Account' in response.content
+
+
+@pytest.mark.django_db
+class TestPlaceBetButtons:
+    """Events menu has per-team 'Place Bet' buttons instead of radio buttons."""
+
+    @patch('betting.utils.generate_events')
+    def test_events_menu_has_place_bet_buttons(self, mock_gen, logged_in_client, upcoming_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'Place Bet' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_place_bet_buttons_include_team_names(self, mock_gen, logged_in_client, upcoming_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'Duke Blue Devils' in response.content
+        assert b'UNC Tar Heels' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_place_bet_away_button_submits_away_pick(self, mock_gen, logged_in_client, user, upcoming_event):
+        """Submitting with pick=away via the button creates an away wager."""
+        mock_gen.return_value = []
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': upcoming_event.id, 'pick': 'away', 'amount': '5.00'
+        })
+        wager = Wager.objects.get(user=user, event=upcoming_event)
+        assert wager.pick == 'away'
+
+    @patch('betting.utils.generate_events')
+    def test_place_bet_home_button_submits_home_pick(self, mock_gen, logged_in_client, user, upcoming_event):
+        """Submitting with pick=home via the button creates a home wager."""
+        mock_gen.return_value = []
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': upcoming_event.id, 'pick': 'home', 'amount': '5.00'
+        })
+        wager = Wager.objects.get(user=user, event=upcoming_event)
+        assert wager.pick == 'home'
+
+
+# ---------------------------------------------------------------------------
+# v0.1.1.1 — First/Last name on registration; first name in welcome message
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestRegistrationNameFields:
+    """Create Account form accepts first_name and last_name and saves them."""
+
+    def test_register_saves_first_name(self, client, db):
+        client.post(reverse('login'), {
+            'action': 'register',
+            'username': 'newuser',
+            'password': 'newpass123',
+            'first_name': 'Ada',
+            'last_name': 'Lovelace',
+        })
+        user = User.objects.get(username='newuser')
+        assert user.first_name == 'Ada'
+
+    def test_register_saves_last_name(self, client, db):
+        client.post(reverse('login'), {
+            'action': 'register',
+            'username': 'newuser2',
+            'password': 'newpass123',
+            'first_name': 'Ada',
+            'last_name': 'Lovelace',
+        })
+        user = User.objects.get(username='newuser2')
+        assert user.last_name == 'Lovelace'
+
+    def test_register_works_without_name_fields(self, client, db):
+        """First/Last name are optional — registration still succeeds without them."""
+        response = client.post(reverse('login'), {
+            'action': 'register',
+            'username': 'noname',
+            'password': 'nopass123',
+        })
+        assert response.status_code == 302
+        assert User.objects.filter(username='noname').exists()
+
+    def test_login_form_has_first_name_field(self, client):
+        response = client.get(reverse('login'))
+        assert b'first_name' in response.content
+
+    def test_login_form_has_last_name_field(self, client):
+        response = client.get(reverse('login'))
+        assert b'last_name' in response.content
+
+
+@pytest.mark.django_db
+class TestWelcomeMessage:
+    """Main page welcome shows first name when available, username otherwise."""
+
+    def test_welcome_shows_first_name_when_set(self, client, db):
+        user = User.objects.create_user(
+            username='adalovelace', password='testpass123',
+            first_name='Ada',
+        )
+        client.login(username='adalovelace', password='testpass123')
+        response = client.get(reverse('main'))
+        assert b'Ada' in response.content
+
+    def test_welcome_shows_username_when_no_first_name(self, client, db):
+        user = User.objects.create_user(username='noname2', password='testpass123')
+        client.login(username='noname2', password='testpass123')
+        response = client.get(reverse('main'))
+        assert b'noname2' in response.content
+
+
+# ---------------------------------------------------------------------------
+# v0.2.0 — Sport Selector dropdown
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def mens_event(db):
+    return SportingEvent.objects.create(
+        home_team='Duke Blue Devils', away_team='UNC Tar Heels',
+        event_time=timezone.now() + timezone.timedelta(days=1),
+        spread=Decimal('-4.5'), home_odds=-110, away_odds=-110,
+        gender='M', week_start=get_week_start().date(),
+    )
+
+@pytest.fixture
+def womens_event(db):
+    return SportingEvent.objects.create(
+        home_team='South Carolina Gamecocks', away_team='LSU Tigers',
+        event_time=timezone.now() + timezone.timedelta(days=1),
+        spread=Decimal('-3.5'), home_odds=-110, away_odds=-110,
+        gender='W', week_start=get_week_start().date(),
+    )
+
+
+@pytest.mark.django_db
+class TestSportSelector:
+    """Events menu has a sport selector dropdown that filters displayed events."""
+
+    @patch('betting.utils.generate_events')
+    def test_events_menu_has_sport_selector(self, mock_gen, logged_in_client, mens_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b'Select Sport' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_sport_selector_has_mens_option(self, mock_gen, logged_in_client, mens_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b"Men's Basketball" in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_sport_selector_has_womens_option(self, mock_gen, logged_in_client, womens_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b"Women's Basketball" in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_no_sport_filter_shows_no_events(self, mock_gen, logged_in_client, mens_event, womens_event):
+        """Before a sport is selected, no events should be listed."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b'Duke Blue Devils' not in response.content
+        assert b'South Carolina Gamecocks' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_no_sport_filter_shows_select_prompt(self, mock_gen, logged_in_client, mens_event):
+        """Before a sport is selected, a prompt to select a sport is shown."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b'Select a sport' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_mens_filter_shows_only_mens_events(self, mock_gen, logged_in_client, mens_event, womens_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'Duke Blue Devils' in response.content
+        assert b'South Carolina Gamecocks' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_womens_filter_shows_only_womens_events(self, mock_gen, logged_in_client, mens_event, womens_event):
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=W')
+        assert b'South Carolina Gamecocks' in response.content
+        assert b'Duke Blue Devils' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_no_events_message_when_filter_returns_nothing(self, mock_gen, logged_in_client, mens_event):
+        """Selecting Women's when only men's events exist shows the no-events message."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=W')
+        assert b'No events available' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_selected_sport_preserved_in_dropdown(self, mock_gen, logged_in_client, mens_event):
+        """The dropdown reflects the currently selected sport."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'selected' in response.content

@@ -4,12 +4,26 @@
   <!-- Header -->
   <div class="flex items-center justify-between mb-4">
     <h2 class="text-xl font-bold text-tardis">NCAA Basketball — This Week</h2>
-    <button hx-get="{% url 'events_menu' %}?refresh=1"
+    <button hx-get="{% url 'events_menu' %}?refresh=1{% if selected_sport %}&sport={{ selected_sport }}{% endif %}"
             hx-target="#content"
             hx-swap="innerHTML"
             class="flex items-center gap-2 px-4 py-1.5 rounded-full text-sm font-semibold border-2 border-bleu text-bleu hover:bg-bleu hover:text-white transition-colors">
       ↻ Reload Games
     </button>
+  </div>
+
+  <!-- Sport Selector -->
+  <div class="mb-5">
+    <select name="sport"
+            hx-get="{% url 'events_menu' %}"
+            hx-target="#content"
+            hx-swap="innerHTML"
+            hx-trigger="change"
+            class="px-4 py-2 rounded-lg border border-s-blue bg-nw-blue text-tardis text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-bleu">
+      <option value="" {% if not selected_sport %}selected{% endif %}>— Select Sport —</option>
+      <option value="M" {% if selected_sport == 'M' %}selected{% endif %}>NCAA Men's Basketball</option>
+      <option value="W" {% if selected_sport == 'W' %}selected{% endif %}>NCAA Women's Basketball</option>
+    </select>
   </div>
 
   <!-- Balance -->
@@ -27,8 +41,12 @@
 
   {% if not events %}
   <div class="text-center text-bleu py-12 opacity-60">
-    <p class="text-lg font-semibold">No games available.</p>
-    <p class="text-sm mt-1">Click "Reload Games" to generate this week's list.</p>
+    {% if selected_sport %}
+    <p class="text-lg font-semibold">No events available for this sport.</p>
+    <p class="text-sm mt-1">Try a different sport or click "Reload Games" to refresh.</p>
+    {% else %}
+    <p class="text-lg font-semibold">Select a sport above to view upcoming games.</p>
+    {% endif %}
   </div>
   {% else %}
 
@@ -109,21 +127,20 @@
                 hx-swap="innerHTML">
             {% csrf_token %}
             <input type="hidden" name="event_id" value="{{ event.id }}" />
-            <div class="flex flex-wrap gap-3 items-center">
-              <label class="flex items-center gap-1.5 cursor-pointer">
-                <input type="radio" name="pick" value="away" required class="accent-bleu" />
-                <span class="text-sm text-tardis font-medium">{{ event.away_team }}</span>
-              </label>
-              <label class="flex items-center gap-1.5 cursor-pointer">
-                <input type="radio" name="pick" value="home" required class="accent-bleu" />
-                <span class="text-sm text-tardis font-medium">{{ event.home_team }}</span>
-              </label>
-              <input type="number" name="amount" min="0.01" step="0.01"
-                placeholder="Amount $"
-                class="w-28 px-3 py-1.5 rounded-lg border border-s-blue focus:outline-none focus:ring-2 focus:ring-bleu bg-nw-blue text-tardis text-sm" />
-              <button type="submit"
+            <div class="flex flex-wrap gap-3 items-end">
+              <div>
+                <label class="block text-xs font-semibold text-bleu uppercase tracking-wide mb-1">Amount ($)</label>
+                <input type="number" name="amount" min="0.01" step="0.01"
+                  placeholder="0.00"
+                  class="w-28 px-3 py-1.5 rounded-lg border border-s-blue focus:outline-none focus:ring-2 focus:ring-bleu bg-nw-blue text-tardis text-sm" />
+              </div>
+              <button type="submit" name="pick" value="away"
                 class="px-4 py-1.5 rounded-lg bg-p-orange hover:bg-p-orange-h text-white font-semibold text-sm transition-colors">
-                Place Wager
+                Place Bet — {{ event.away_team }}
+              </button>
+              <button type="submit" name="pick" value="home"
+                class="px-4 py-1.5 rounded-lg bg-p-orange hover:bg-p-orange-h text-white font-semibold text-sm transition-colors">
+                Place Bet — {{ event.home_team }}
               </button>
             </div>
           </form>

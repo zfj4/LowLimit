@@ -35,7 +35,12 @@ def login_view(request):
                 return render(request, 'login.html', {'error': 'Username already taken.'})
             if len(password) < 8:
                 return render(request, 'login.html', {'error': 'Password must be at least 8 characters.'})
-            user = User.objects.create_user(username=username, password=password)
+            first_name = request.POST.get('first_name', '').strip()
+            last_name = request.POST.get('last_name', '').strip()
+            user = User.objects.create_user(
+                username=username, password=password,
+                first_name=first_name, last_name=last_name,
+            )
             login(request, user)
             return redirect('main')
 
@@ -151,12 +156,15 @@ def _deposit_menu_response(request, weekly_deposited, weekly_remaining,
 @login_required
 def events_menu_view(request):
     force_refresh = request.GET.get('refresh') == '1'
-    events = get_or_generate_events(force_refresh=force_refresh)
-    user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=events)}
+    sport = request.GET.get('sport', '')  # 'M', 'W', or '' (all)
+    all_events = get_or_generate_events(force_refresh=force_refresh)
+    events = all_events.filter(gender=sport) if sport else all_events.none()
+    user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=all_events)}
     context = {
         'events': events,
         'user_wagers': user_wagers,
         'balance': request.user.account.balance,
+        'selected_sport': sport,
     }
     return render(request, 'betting/partials/events_menu.html', context)
 
