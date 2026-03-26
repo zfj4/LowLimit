@@ -174,21 +174,24 @@ def events_menu_view(request):
 def place_wager_view(request):
     event_id = request.POST.get('event_id')
     pick = request.POST.get('pick')
+    sport = request.POST.get('sport', '')
 
     try:
         amount = Decimal(request.POST.get('amount', '0'))
     except InvalidOperation:
         amount = Decimal('0')
 
-    events = get_or_generate_events()
-    user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=events)}
+    all_events = get_or_generate_events()
+    user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=all_events)}
+    display_events = all_events.filter(gender=sport) if sport else all_events.none()
 
     def error_response(msg):
         ctx = {
-            'events': events,
+            'events': display_events,
             'user_wagers': user_wagers,
             'balance': request.user.account.balance,
             'wager_error': msg,
+            'selected_sport': sport,
         }
         return render(request, 'betting/partials/events_menu.html', ctx)
 
@@ -215,13 +218,15 @@ def place_wager_view(request):
     account.save()
 
     # Refresh data for re-render
-    events = get_or_generate_events()
-    user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=events)}
+    all_events = get_or_generate_events()
+    user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=all_events)}
+    display_events = all_events.filter(gender=sport) if sport else all_events.none()
     ctx = {
-        'events': events,
+        'events': display_events,
         'user_wagers': user_wagers,
         'balance': request.user.account.balance,
         'wager_success': f'Wager of ${amount:.2f} placed!',
+        'selected_sport': sport,
     }
     html = render(request, 'betting/partials/events_menu.html', ctx).content.decode()
     html += _render_banner_oob(request)

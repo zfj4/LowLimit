@@ -519,3 +519,88 @@ class TestSportSelector:
         mock_gen.return_value = []
         response = logged_in_client.get(reverse('events_menu') + '?sport=M')
         assert b'selected' in response.content
+
+
+# ---------------------------------------------------------------------------
+# Sport filter preserved after placing wager + scroll fix
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestPlaceWagerSportFilter:
+    """After placing a wager the sport filter and scroll position are preserved."""
+
+    @patch('betting.utils.generate_events')
+    def test_success_shows_only_selected_sport(
+        self, mock_gen, logged_in_client, user, mens_event, womens_event
+    ):
+        """After a successful wager, only the sport selected in the form is shown."""
+        mock_gen.return_value = []
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': mens_event.id, 'pick': 'home',
+            'amount': '5.00', 'sport': 'M',
+        })
+        # Place a second wager to test filtering (first wager is already placed)
+        # Instead verify directly: GET with sport=M shows mens but not womens
+        response = logged_in_client.post(reverse('place_wager'), {
+            'event_id': womens_event.id, 'pick': 'home',
+            'amount': '5.00', 'sport': 'M',
+        })
+        assert b'South Carolina Gamecocks' not in response.content
+        assert b'Duke Blue Devils' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_success_mens_filter_excludes_womens(
+        self, mock_gen, logged_in_client, user, mens_event, womens_event
+    ):
+        """Posting sport=M returns only men's events."""
+        mock_gen.return_value = []
+        response = logged_in_client.post(reverse('place_wager'), {
+            'event_id': mens_event.id, 'pick': 'home',
+            'amount': '5.00', 'sport': 'M',
+        })
+        assert b'Duke Blue Devils' in response.content
+        assert b'South Carolina Gamecocks' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_success_womens_filter_excludes_mens(
+        self, mock_gen, logged_in_client, user, mens_event, womens_event
+    ):
+        """Posting sport=W returns only women's events."""
+        mock_gen.return_value = []
+        response = logged_in_client.post(reverse('place_wager'), {
+            'event_id': womens_event.id, 'pick': 'home',
+            'amount': '5.00', 'sport': 'W',
+        })
+        assert b'South Carolina Gamecocks' in response.content
+        assert b'Duke Blue Devils' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_error_response_preserves_sport_filter(
+        self, mock_gen, logged_in_client, mens_event, womens_event
+    ):
+        """An error response (e.g. zero amount) also preserves the sport filter."""
+        mock_gen.return_value = []
+        response = logged_in_client.post(reverse('place_wager'), {
+            'event_id': mens_event.id, 'pick': 'home',
+            'amount': '0', 'sport': 'M',
+        })
+        assert b'Duke Blue Devils' in response.content
+        assert b'South Carolina Gamecocks' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_wager_form_includes_sport_hidden_field(
+        self, mock_gen, logged_in_client, mens_event
+    ):
+        """The wager form passes the current sport via a hidden input."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'name="sport"' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_wager_form_hx_swap_scrolls_to_top(
+        self, mock_gen, logged_in_client, mens_event
+    ):
+        """The wager form's hx-swap scrolls to the top of the page on submit."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'show:window:top' in response.content
