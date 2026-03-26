@@ -23,7 +23,7 @@
         </p>
         <p class="text-xs text-bleu mt-0.5">
           {{ wager.event.event_time|date:"M j, Y · g:i A" }} ET &nbsp;·&nbsp;
-          Picked: <span class="font-semibold">{{ wager.picked_team }}</span>
+          Picked: <span class="font-semibold">{{ wager.picked_team }}{% if wager.wager_spread_display %} {{ wager.wager_spread_display }}{% endif %}</span>
         </p>
         <p class="text-xs text-bleu">
           Wagered: <span class="font-semibold text-tardis">${{ wager.amount|floatformat:2 }}</span>

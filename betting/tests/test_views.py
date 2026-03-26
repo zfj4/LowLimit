@@ -607,6 +607,85 @@ class TestPlaceWagerSportFilter:
 
 
 # ---------------------------------------------------------------------------
+# v0.2.2.1 — Wager spread stored and displayed in history
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestWagerSpreadStorage:
+    """place_wager_view stores the picked team's spread at placement time."""
+
+    @patch('betting.utils.generate_events')
+    def test_home_pick_stores_home_spread(self, mock_gen, logged_in_client, user, upcoming_event):
+        """Home pick stores the event spread as-is (negative = home favored)."""
+        mock_gen.return_value = []
+        # upcoming_event has spread=-4.5 (home favored by 4.5)
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': upcoming_event.id, 'pick': 'home', 'amount': '5.00',
+        })
+        wager = Wager.objects.get(user=user, event=upcoming_event)
+        assert wager.wager_spread == Decimal('-4.5')
+
+    @patch('betting.utils.generate_events')
+    def test_away_pick_stores_flipped_spread(self, mock_gen, logged_in_client, user, upcoming_event):
+        """Away pick stores the negated event spread (away team's perspective)."""
+        mock_gen.return_value = []
+        # upcoming_event has spread=-4.5; away team sees +4.5
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': upcoming_event.id, 'pick': 'away', 'amount': '5.00',
+        })
+        wager = Wager.objects.get(user=user, event=upcoming_event)
+        assert wager.wager_spread == Decimal('4.5')
+
+
+@pytest.mark.django_db
+class TestWagerHistorySpreadDisplay:
+    """Wager History screen shows the spread after the picked team name."""
+
+    def test_history_shows_spread_for_home_pick(self, logged_in_client, user, upcoming_event):
+        """Home pick with spread -4.5 displays as '-4.5' in history."""
+        Wager.objects.create(
+            user=user, event=upcoming_event,
+            amount=Decimal('5.00'), pick='home',
+            wager_spread=Decimal('-4.5'),
+        )
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'-4.5' in response.content
+
+    def test_history_shows_spread_for_away_pick(self, logged_in_client, user, upcoming_event):
+        """Away pick with spread +4.5 displays as '+4.5' in history."""
+        Wager.objects.create(
+            user=user, event=upcoming_event,
+            amount=Decimal('5.00'), pick='away',
+            wager_spread=Decimal('4.5'),
+        )
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'+4.5' in response.content
+
+    def test_history_picked_field_includes_team_and_spread(self, logged_in_client, user, upcoming_event):
+        """The 'Picked' field shows both team name and spread together."""
+        Wager.objects.create(
+            user=user, event=upcoming_event,
+            amount=Decimal('5.00'), pick='home',
+            wager_spread=Decimal('-4.5'),
+        )
+        response = logged_in_client.get(reverse('history_menu'))
+        content = response.content.decode()
+        assert 'Duke Blue Devils' in content
+        assert '-4.5' in content
+
+    def test_history_null_spread_shows_team_without_crash(self, logged_in_client, user, upcoming_event):
+        """Existing wagers without a stored spread don't crash the history view."""
+        Wager.objects.create(
+            user=user, event=upcoming_event,
+            amount=Decimal('5.00'), pick='home',
+            wager_spread=None,
+        )
+        response = logged_in_client.get(reverse('history_menu'))
+        assert response.status_code == 200
+        assert b'Duke Blue Devils' in response.content
+
+
+# ---------------------------------------------------------------------------
 # Game time display in Eastern time
 # ---------------------------------------------------------------------------
 

@@ -213,7 +213,8 @@ def place_wager_view(request):
     if Wager.objects.filter(user=request.user, event=event).exists():
         return error_response('You already have a wager on this event.')
 
-    Wager.objects.create(user=request.user, event=event, amount=amount, pick=pick)
+    wager_spread = event.spread if pick == 'home' else -event.spread
+    Wager.objects.create(user=request.user, event=event, amount=amount, pick=pick, wager_spread=wager_spread)
     account.balance -= amount
     account.save()
 

@@ -72,6 +72,7 @@ class Wager(models.Model):
     pick = models.CharField(max_length=4, choices=PICK_CHOICES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     payout = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    wager_spread = models.DecimalField(max_digits=5, decimal_places=1, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     settled_at = models.DateTimeField(null=True, blank=True)
 
@@ -80,6 +81,17 @@ class Wager(models.Model):
 
     def picked_team(self):
         return self.event.home_team if self.pick == 'home' else self.event.away_team
+
+    def wager_spread_display(self):
+        """Return the stored spread formatted for display (e.g. '+3.5', '-2.5', 'PK')."""
+        if self.wager_spread is None:
+            return ''
+        s = float(self.wager_spread)
+        if s > 0:
+            return f'+{s:g}'
+        elif s < 0:
+            return f'{s:g}'
+        return 'PK'
 
     def net_change(self):
         """Net change to balance from this wager (profit on win, -amount on loss, 0 on push)."""
