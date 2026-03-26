@@ -93,6 +93,20 @@ def settle_wager(wager):
     wager.save()
 
 
+def _abbr_matches(abbr, team_name):
+    """Return True if ESPN abbreviation matches the team name.
+
+    Handles standard prefix matches (PUR→Purdue), containment (CONN→UConn),
+    and initials-based abbreviations (ISU→Iowa State, MSU→Michigan State).
+    """
+    clean = team_name.upper().replace(' ', '').replace('.', '').replace("'", '')
+    if clean.startswith(abbr) or abbr in clean:
+        return True
+    # Initials match: first letter of each word, optionally followed by 'U'
+    initials = ''.join(w[0] for w in team_name.upper().split() if w)
+    return abbr.startswith(initials)
+
+
 def scrape_espn_schedule(start_date, end_date):
     """Scrape real NCAA basketball games with betting lines from ESPN schedule pages."""
     from bs4 import BeautifulSoup
@@ -166,15 +180,9 @@ def scrape_espn_schedule(start_date, end_date):
                         if m:
                             fav_abbr = m.group(1)
                             fav_value = float(m.group(2))
-                            home_clean = (
-                                home_team.upper().replace(' ', '').replace('.', '')
-                            )
-                            away_clean = (
-                                away_team.upper().replace(' ', '').replace('.', '')
-                            )
-                            if home_clean.startswith(fav_abbr) or fav_abbr in home_clean:
+                            if _abbr_matches(fav_abbr, home_team):
                                 spread = fav_value
-                            elif away_clean.startswith(fav_abbr) or fav_abbr in away_clean:
+                            elif _abbr_matches(fav_abbr, away_team):
                                 spread = -fav_value
 
                     games.append({
@@ -203,9 +211,8 @@ def generate_events():
 
 
 def get_or_generate_events(force_refresh=False):
-    """Return this week's SportingEvents, generating via AI if none exist yet."""
+    """Return this week's SportingEvents, scraping ESPN if none exist or refresh requested."""
     from .models import SportingEvent
-    from datetime import date
 
     week_start = get_week_start().date()
     events = SportingEvent.objects.filter(week_start=week_start)
@@ -213,11 +220,6 @@ def get_or_generate_events(force_refresh=False):
     if events.exists() and not force_refresh:
         return events
 
-    if force_refresh:
-        # Remove events that have no attached wagers so they can be regenerated cleanly
-        events.filter(wagers__isnull=True).delete()
-
-    eastern = pytz.timezone('America/New_York')
     games = generate_events()
 
     for game in games:
@@ -225,18 +227,19 @@ def get_or_generate_events(force_refresh=False):
             dt_str = game['event_datetime']
             parsed_dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
             if parsed_dt.tzinfo is None:
-                eastern = pytz.timezone('America/New_York')
-                parsed_dt = eastern.localize(parsed_dt)
+                parsed_dt = pytz.timezone('America/New_York').localize(parsed_dt)
             utc_dt = parsed_dt.astimezone(pytz.utc)
-            SportingEvent.objects.create(
+            SportingEvent.objects.update_or_create(
                 home_team=game['home_team'],
                 away_team=game['away_team'],
                 event_time=utc_dt,
-                spread=Decimal(str(game['spread'])),
-                home_odds=int(game['home_odds']),
-                away_odds=int(game['away_odds']),
-                gender=game.get('gender', 'M'),
-                week_start=week_start,
+                defaults={
+                    'spread': Decimal(str(game['spread'])),
+                    'home_odds': int(game['home_odds']),
+                    'away_odds': int(game['away_odds']),
+                    'gender': game.get('gender', 'M'),
+                    'week_start': week_start,
+                },
             )
         except Exception:
             continue

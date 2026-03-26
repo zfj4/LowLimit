@@ -449,6 +449,24 @@ class TestScrapeEspnSchedule:
         genders = {g['gender'] for g in games}
         assert genders == {'M', 'W'}
 
+    @patch('requests.get')
+    def test_spread_parsed_via_initials_abbreviation(self, mock_get):
+        """ISU matches Iowa State (initials I+S plus U for University)."""
+        isu_row = _MENS_GAME_ROW \
+            .replace('Line: PUR -7.5', 'Line: ISU -3.5') \
+            .replace('>Texas<', '>Tennessee<') \
+            .replace('texas-longhorns', 'tennessee-volunteers') \
+            .replace('>Purdue<', '>Iowa State<') \
+            .replace('purdue-boilermakers', 'iowa-state-cyclones')
+        mock_get.side_effect = [
+            self._mock_resp(_make_html(isu_row)),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 3, 25), date(2025, 3, 25))
+        assert games[0]['home_team'] == 'Iowa State'
+        assert games[0]['spread'] == -3.5
+
 
 class TestGenerateEvents:
     """generate_events() uses ESPN schedule HTML scraping."""
@@ -467,3 +485,61 @@ class TestGenerateEvents:
         mock_scrape.return_value = games
         result = generate_events()
         assert result == games
+
+
+@pytest.mark.django_db
+class TestGetOrGenerateEvents:
+    """get_or_generate_events() saves events without creating duplicates."""
+
+    SAMPLE_GAME = {
+        'home_team': 'Purdue', 'away_team': 'Texas',
+        'event_datetime': '2025-03-25T23:10:00+00:00',
+        'gender': 'M', 'spread': -7.5, 'home_odds': -110, 'away_odds': -110,
+    }
+
+    @patch('betting.utils.generate_events')
+    def test_repeated_calls_do_not_create_duplicates(self, mock_gen):
+        """Calling get_or_generate_events twice must not double the events."""
+        from betting.utils import get_or_generate_events
+        mock_gen.return_value = [self.SAMPLE_GAME]
+        get_or_generate_events()
+        get_or_generate_events()
+        assert SportingEvent.objects.count() == 1
+
+    @patch('betting.utils.generate_events')
+    def test_force_refresh_does_not_create_duplicates(self, mock_gen):
+        """force_refresh=True must not duplicate events already in the DB."""
+        from betting.utils import get_or_generate_events
+        mock_gen.return_value = [self.SAMPLE_GAME]
+        get_or_generate_events()
+        get_or_generate_events(force_refresh=True)
+        assert SportingEvent.objects.count() == 1
+
+    @patch('betting.utils.generate_events')
+    def test_force_refresh_adds_newly_available_events(self, mock_gen):
+        """force_refresh=True adds new events ESPN has since made available."""
+        from betting.utils import get_or_generate_events
+        second_game = {
+            'home_team': 'Arizona', 'away_team': 'Arkansas',
+            'event_datetime': '2025-03-26T01:45:00+00:00',
+            'gender': 'M', 'spread': -7.5, 'home_odds': -110, 'away_odds': -110,
+        }
+        mock_gen.return_value = [self.SAMPLE_GAME]
+        get_or_generate_events()
+        mock_gen.return_value = [self.SAMPLE_GAME, second_game]
+        get_or_generate_events(force_refresh=True)
+        assert SportingEvent.objects.count() == 2
+
+    @patch('betting.utils.generate_events')
+    def test_force_refresh_does_not_duplicate_wagered_events(self, mock_gen):
+        """force_refresh=True must not duplicate an event that already has a wager."""
+        from betting.utils import get_or_generate_events
+        from django.contrib.auth.models import User
+        mock_gen.return_value = [self.SAMPLE_GAME]
+        get_or_generate_events()
+        event = SportingEvent.objects.first()
+        user = User.objects.create_user(username='duptest', password='testpass123')
+        Wager.objects.create(user=user, event=event, amount=Decimal('5.00'), pick='home')
+        # Now force_refresh — the wagered event cannot be deleted, must not be duplicated
+        get_or_generate_events(force_refresh=True)
+        assert SportingEvent.objects.count() == 1

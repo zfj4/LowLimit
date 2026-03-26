@@ -604,3 +604,32 @@ class TestPlaceWagerSportFilter:
         mock_gen.return_value = []
         response = logged_in_client.get(reverse('events_menu') + '?sport=M')
         assert b'show:window:top' in response.content
+
+
+# ---------------------------------------------------------------------------
+# Game time display in Eastern time
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestEventTimeDisplay:
+    """Event times are displayed in Eastern time, not UTC."""
+
+    @patch('betting.utils.generate_events')
+    def test_event_time_shown_in_eastern_not_utc(self, mock_gen, logged_in_client):
+        """A game stored at 23:10 UTC (7:10 PM ET) must display as 7:10 PM, not 11:10 PM."""
+        mock_gen.return_value = []
+        import pytz
+        from django.utils import timezone as tz
+        eastern = pytz.timezone('America/New_York')
+        from betting.utils import get_week_start
+        # 23:10 UTC = 7:10 PM EDT
+        event_utc = tz.datetime(2026, 3, 26, 23, 10, tzinfo=pytz.utc)
+        event = SportingEvent.objects.create(
+            home_team='Purdue', away_team='Texas',
+            event_time=event_utc,
+            spread=Decimal('-7.5'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=get_week_start().date(),
+        )
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'7:10 PM' in response.content
+        assert b'11:10 PM' not in response.content
