@@ -16,6 +16,8 @@ from betting.utils import (
     get_banner_context,
     settle_wager,
     scrape_espn_schedule,
+    scrape_espn_scores,
+    update_event_results,
     generate_events,
     WEEKLY_LIMIT,
 )
@@ -543,3 +545,216 @@ class TestGetOrGenerateEvents:
         # Now force_refresh — the wagered event cannot be deleted, must not be duplicated
         get_or_generate_events(force_refresh=True)
         assert SportingEvent.objects.count() == 1
+
+
+# ---------------------------------------------------------------------------
+# v0.2.3 — ESPN score scraping and event result updates
+# ---------------------------------------------------------------------------
+
+_COMPLETED_GAME_ROW = '''
+<tr>
+  <td class="events__col Table__TD"><div class="matchTeams">
+    <span class="Table__Team away">
+      <a href="/mens-college-basketball/team/_/id/251/texas-longhorns"></a>
+      <a href="/mens-college-basketball/team/_/id/251/texas-longhorns">Texas</a>
+    </span>
+  </div></td>
+  <td class="colspan__col Table__TD"><div class="local">
+    <span class="Table__Team">
+      <a href="/mens-college-basketball/team/_/id/2509/purdue-boilermakers"></a>
+      <a href="/mens-college-basketball/team/_/id/2509/purdue-boilermakers">Purdue</a>
+    </span>
+  </div></td>
+  <td class="teams__col Table__TD"><a href="/mens-college-basketball/game/_/gameId/123/texas-purdue">PUR 79, TEX 77</a></td>
+  <td class="Table__TD"></td>
+  <td class="Table__TD"></td>
+  <td class="Table__TD"></td>
+  <td class="Table__TD"></td>
+</tr>'''
+
+
+class TestScrapeEspnScores:
+    """scrape_espn_scores() returns completed game scores from ESPN schedule pages."""
+
+    def _mock_resp(self, html):
+        m = MagicMock()
+        m.text = html
+        m.raise_for_status.return_value = None
+        return m
+
+    @patch('requests.get')
+    def test_returns_list_of_scores(self, mock_get):
+        mock_get.side_effect = [
+            self._mock_resp(_make_html(_COMPLETED_GAME_ROW)),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 3, 25)])
+        assert isinstance(scores, list)
+        assert len(scores) == 1
+
+    @patch('requests.get')
+    def test_score_has_required_fields(self, mock_get):
+        mock_get.side_effect = [
+            self._mock_resp(_make_html(_COMPLETED_GAME_ROW)),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 3, 25)])
+        score = scores[0]
+        assert 'home_team' in score
+        assert 'away_team' in score
+        assert 'home_score' in score
+        assert 'away_score' in score
+
+    @patch('requests.get')
+    def test_correct_team_names(self, mock_get):
+        mock_get.side_effect = [
+            self._mock_resp(_make_html(_COMPLETED_GAME_ROW)),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 3, 25)])
+        assert scores[0]['away_team'] == 'Texas'
+        assert scores[0]['home_team'] == 'Purdue'
+
+    @patch('requests.get')
+    def test_correct_scores(self, mock_get):
+        mock_get.side_effect = [
+            self._mock_resp(_make_html(_COMPLETED_GAME_ROW)),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 3, 25)])
+        # PUR 79, TEX 77 → Purdue (home) 79, Texas (away) 77
+        assert scores[0]['home_score'] == 79
+        assert scores[0]['away_score'] == 77
+
+    @patch('requests.get')
+    def test_skips_upcoming_games(self, mock_get):
+        """Rows with a time string (not 'Final') are skipped."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html(_MENS_GAME_ROW)),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 3, 25)])
+        assert scores == []
+
+    @patch('requests.get')
+    def test_handles_request_error_gracefully(self, mock_get):
+        import requests as req_lib
+        mock_get.side_effect = req_lib.RequestException("Network error")
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 3, 25)])
+        assert scores == []
+
+
+@pytest.mark.django_db
+class TestUpdateEventResults:
+    """update_event_results() finds past events, scrapes scores, settles wagers."""
+
+    def setup_method(self):
+        self.user = User.objects.create_user(username='updatetest', password='testpass123')
+        self.user.account.balance = Decimal('0.00')
+        self.user.account.save()
+
+    def _make_past_event(self, home='Home FC', away='Away FC'):
+        return SportingEvent.objects.create(
+            home_team=home,
+            away_team=away,
+            event_time=timezone.now() - timezone.timedelta(hours=3),
+            spread=Decimal('-5.5'),
+            home_odds=-110,
+            away_odds=-110,
+            gender='M',
+            week_start=timezone.now().date(),
+            status='upcoming',
+        )
+
+    def test_returns_empty_when_no_past_events(self):
+        result = update_event_results()
+        assert result == []
+
+    def test_skips_future_events(self):
+        SportingEvent.objects.create(
+            home_team='Future Home', away_team='Future Away',
+            event_time=timezone.now() + timezone.timedelta(hours=3),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=timezone.now().date(), status='upcoming',
+        )
+        result = update_event_results()
+        assert result == []
+
+    def test_skips_already_final_events(self):
+        event = self._make_past_event()
+        event.status = 'final'
+        event.home_score = 80
+        event.away_score = 70
+        event.save()
+        with patch('betting.utils.scrape_espn_scores') as mock_scrape:
+            mock_scrape.return_value = [
+                {'home_team': event.home_team, 'away_team': event.away_team,
+                 'home_score': 80, 'away_score': 70}
+            ]
+            result = update_event_results()
+        assert result == []
+        mock_scrape.assert_not_called()
+
+    @patch('betting.utils.scrape_espn_scores')
+    def test_updates_event_scores(self, mock_scrape):
+        event = self._make_past_event(home='Purdue', away='Texas')
+        mock_scrape.return_value = [
+            {'home_team': 'Purdue', 'away_team': 'Texas', 'home_score': 68, 'away_score': 72}
+        ]
+        update_event_results()
+        event.refresh_from_db()
+        assert event.home_score == 68
+        assert event.away_score == 72
+        assert event.status == 'final'
+
+    @patch('betting.utils.scrape_espn_scores')
+    def test_settles_pending_wagers(self, mock_scrape):
+        event = self._make_past_event(home='Purdue', away='Texas')
+        wager = Wager.objects.create(
+            user=self.user, event=event, amount=Decimal('10.00'), pick='home'
+        )
+        mock_scrape.return_value = [
+            {'home_team': 'Purdue', 'away_team': 'Texas', 'home_score': 80, 'away_score': 70}
+        ]
+        update_event_results()
+        wager.refresh_from_db()
+        assert wager.status != 'pending'
+
+    @patch('betting.utils.scrape_espn_scores')
+    def test_returns_settled_wagers(self, mock_scrape):
+        event = self._make_past_event(home='Purdue', away='Texas')
+        wager = Wager.objects.create(
+            user=self.user, event=event, amount=Decimal('10.00'), pick='home'
+        )
+        mock_scrape.return_value = [
+            {'home_team': 'Purdue', 'away_team': 'Texas', 'home_score': 80, 'away_score': 70}
+        ]
+        result = update_event_results()
+        assert len(result) == 1
+        assert result[0].pk == wager.pk
+
+    @patch('betting.utils.scrape_espn_scores')
+    def test_settles_wagers_when_duplicate_events_exist(self, mock_scrape):
+        """If two upcoming past events share home/away names, both are settled."""
+        event1 = self._make_past_event(home='Purdue', away='Texas')
+        event2 = self._make_past_event(home='Purdue', away='Texas')
+        wager1 = Wager.objects.create(
+            user=self.user, event=event1, amount=Decimal('5.00'), pick='home'
+        )
+        wager2 = Wager.objects.create(
+            user=self.user, event=event2, amount=Decimal('5.00'), pick='away'
+        )
+        mock_scrape.return_value = [
+            {'home_team': 'Purdue', 'away_team': 'Texas', 'home_score': 79, 'away_score': 77}
+        ]
+        update_event_results()
+        wager1.refresh_from_db()
+        wager2.refresh_from_db()
+        assert wager1.status != 'pending'
+        assert wager2.status != 'pending'

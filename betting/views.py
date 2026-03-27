@@ -14,6 +14,7 @@ from .utils import (
     get_or_generate_events,
     get_weekly_deposited,
     get_weekly_remaining,
+    update_event_results,
 )
 
 
@@ -246,6 +247,24 @@ def history_menu_view(request):
         .order_by('event__event_time')
     )
     return render(request, 'betting/partials/history_menu.html', {'wagers': wagers})
+
+
+# ---------------------------------------------------------------------------
+# Update Results
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def update_results_view(request):
+    update_event_results()
+    wagers = (
+        Wager.objects.filter(user=request.user)
+        .select_related('event')
+        .order_by('event__event_time')
+    )
+    html = render(request, 'betting/partials/history_menu.html', {'wagers': wagers}).content.decode()
+    html += _render_banner_oob(request)
+    return HttpResponse(html)
 
 
 # ---------------------------------------------------------------------------

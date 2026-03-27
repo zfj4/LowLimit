@@ -1,7 +1,17 @@
 {% load betting_tags %}
 <div>
 
-  <h2 class="text-xl font-bold text-tardis mb-4">Wager History</h2>
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-xl font-bold text-tardis">Wager History</h2>
+    <button
+      hx-post="{% url 'update_results' %}"
+      hx-target="#content"
+      hx-swap="innerHTML"
+      hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+      class="px-4 py-1.5 rounded-full text-sm font-semibold bg-tardis text-white hover:opacity-90 transition">
+      Update
+    </button>
+  </div>
 
   {% if not wagers %}
   <div class="text-center text-bleu py-12 opacity-60">

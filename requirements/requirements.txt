@@ -77,3 +77,13 @@ Version 0.2.2.1:
 Version 0.2.2.2:
 * Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
 * The Wager History screen shall be sorted by date and time of event, with the earliest at the top.
+
+Version 0.2.3:
+* Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
+* The history_menu.html partial shall have a button saying "Update".
+* This Update Button shall be placed level with the "Wager History" header, above the far right of the list of wagers, aligned with the rounded spans that display the water status.
+* Clicking this button shall update the results of any completed events whose results have not already been updated.
+* Results for completed NCAA basketball games are available at the same URLs that supply schedules and point spreads: https://www.espn.com/mens-college-basketball/schedule/_/date/YYYYMMDD and https://www.espn.com/womens-college-basketball/schedule/_/date/YYYYMMDD.
+* Upon updating the results in the database, refresh the relevant fields on the list of wagers, presumably by refreshing history_menu.html.
+* If the Update results in a net win for the user, update the Balance field in the top banner by increasing the amount by the amount bet plus the amount won.
+* Update any database fields that need to be updated with this new information.

@@ -345,6 +345,11 @@ class TestHistoryMenuView:
         content = response.content.decode()
         assert content.index('Early Home') < content.index('Late Home')
 
+    def test_history_menu_has_update_button(self, logged_in_client):
+        """History menu includes an Update button."""
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'Update' in response.content
+
 
 # ---------------------------------------------------------------------------
 # v0.1.1 — Banner title and Place Bet buttons
@@ -756,3 +761,40 @@ class TestEventTimeDisplay:
         response = logged_in_client.get(reverse('events_menu') + '?sport=M')
         assert b'7:10 PM' in response.content
         assert b'11:10 PM' not in response.content
+
+
+# ---------------------------------------------------------------------------
+# v0.2.3 — Update Results view
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestUpdateResultsView:
+    """update_results_view calls update_event_results and re-renders history."""
+
+    def test_requires_login(self, client):
+        response = client.post(reverse('update_results'))
+        assert response.status_code == 302
+
+    @patch('betting.views.update_event_results')
+    def test_returns_200(self, mock_update, logged_in_client):
+        mock_update.return_value = []
+        response = logged_in_client.post(reverse('update_results'))
+        assert response.status_code == 200
+
+    @patch('betting.views.update_event_results')
+    def test_returns_history_content(self, mock_update, logged_in_client):
+        mock_update.return_value = []
+        response = logged_in_client.post(reverse('update_results'))
+        assert b'Wager History' in response.content
+
+    @patch('betting.views.update_event_results')
+    def test_includes_banner_oob(self, mock_update, logged_in_client):
+        mock_update.return_value = []
+        response = logged_in_client.post(reverse('update_results'))
+        assert b'hx-swap-oob' in response.content
+
+    @patch('betting.views.update_event_results')
+    def test_calls_update_event_results(self, mock_update, logged_in_client):
+        mock_update.return_value = []
+        logged_in_client.post(reverse('update_results'))
+        mock_update.assert_called_once()

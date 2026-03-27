@@ -11,4 +11,5 @@ urlpatterns = [
     path('events/', views.events_menu_view, name='events_menu'),
     path('events/wager/', views.place_wager_view, name='place_wager'),
     path('history/', views.history_menu_view, name='history_menu'),
+    path('history/update/', views.update_results_view, name='update_results'),
 ]

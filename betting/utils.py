@@ -201,6 +201,121 @@ def scrape_espn_schedule(start_date, end_date):
 
 
 
+def scrape_espn_scores(dates):
+    """Scrape completed game scores from ESPN schedule pages for the given dates.
+
+    Completed game rows have a score summary in tds[2] like 'PUR 79, TEX 77'.
+    Abbreviations are matched to home/away teams using _abbr_matches().
+    """
+    from bs4 import BeautifulSoup
+
+    scores = []
+    endpoints = [
+        ('mens-college-basketball', 'M'),
+        ('womens-college-basketball', 'W'),
+    ]
+
+    for sport_slug, gender in endpoints:
+        for query_date in dates:
+            url = (
+                f"https://www.espn.com/{sport_slug}/schedule"
+                f"/_/date/{query_date.strftime('%Y%m%d')}"
+            )
+            try:
+                resp = requests.get(
+                    url,
+                    timeout=10,
+                    headers={'User-Agent': 'Mozilla/5.0'},
+                )
+                resp.raise_for_status()
+                html = resp.text
+            except Exception:
+                continue
+
+            soup = BeautifulSoup(html, 'html.parser')
+            for row in soup.find_all('tr'):
+                tds = row.find_all('td')
+                if len(tds) < 3:
+                    continue
+                try:
+                    score_text = tds[2].get_text(strip=True)
+                    m = re.search(r'([A-Z]+)\s+(\d+),\s*([A-Z]+)\s+(\d+)', score_text)
+                    if not m:
+                        continue
+
+                    away_links = [
+                        a.get_text(strip=True) for a in tds[0].find_all('a')
+                        if a.get_text(strip=True)
+                    ]
+                    home_links = [
+                        a.get_text(strip=True) for a in tds[1].find_all('a')
+                        if a.get_text(strip=True)
+                    ]
+                    if not away_links or not home_links:
+                        continue
+                    away_team = away_links[0]
+                    home_team = home_links[0]
+
+                    abbr1, s1 = m.group(1), int(m.group(2))
+                    abbr2, s2 = m.group(3), int(m.group(4))
+
+                    if _abbr_matches(abbr1, home_team):
+                        home_score, away_score = s1, s2
+                    elif _abbr_matches(abbr2, home_team):
+                        home_score, away_score = s2, s1
+                    elif _abbr_matches(abbr1, away_team):
+                        home_score, away_score = s2, s1
+                    elif _abbr_matches(abbr2, away_team):
+                        home_score, away_score = s1, s2
+                    else:
+                        continue
+
+                    scores.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'home_score': home_score,
+                        'away_score': away_score,
+                    })
+                except Exception:
+                    continue
+
+    return scores
+
+
+def update_event_results():
+    """Find past upcoming events, scrape scores, update them, and settle wagers."""
+    from .models import SportingEvent, Wager
+
+    now = timezone.now()
+    past_events = SportingEvent.objects.filter(status='upcoming', event_time__lt=now)
+    if not past_events.exists():
+        return []
+
+    dates = list({e.event_time.date() for e in past_events})
+    scores = scrape_espn_scores(dates)
+
+    settled = []
+    for score in scores:
+        matching = past_events.filter(
+            home_team=score['home_team'],
+            away_team=score['away_team'],
+        )
+        for event in matching:
+            try:
+                pending_wagers = list(Wager.objects.filter(event=event, status='pending'))
+                event.home_score = score['home_score']
+                event.away_score = score['away_score']
+                event.status = 'final'
+                event.save()
+                for wager in pending_wagers:
+                    wager.refresh_from_db()
+                    settled.append(wager)
+            except Exception:
+                continue
+
+    return settled
+
+
 def generate_events():
     """Scrape real NCAA games with real betting lines from ESPN schedule pages."""
     from datetime import date
