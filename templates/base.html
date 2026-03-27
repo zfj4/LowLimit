@@ -59,6 +59,14 @@
     /* ── Near-White Blue ── */
     .bg-nw-blue         { background-color: #EBF4FC; }
     .hover\:bg-nw-blue:hover { background-color: #EBF4FC; }
+
+    /* ── HTMX loading state ── */
+    /* Use display:none instead of opacity:0 so hidden indicators take no space */
+    .htmx-indicator                  { display: none; }
+    .htmx-request .htmx-indicator    { display: inline-flex; align-items: center; gap: 0.375rem; }
+    .htmx-request.htmx-indicator     { display: inline-flex; align-items: center; gap: 0.375rem; }
+    /* Hide normal button content while request is in flight */
+    .htmx-request .htmx-request-hide { display: none; }
   </style>
 
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>

@@ -8,8 +8,16 @@
       hx-target="#content"
       hx-swap="innerHTML"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
+      hx-disabled-elt="this"
       class="px-4 py-1.5 rounded-full text-sm font-semibold bg-tardis text-white hover:opacity-90 transition">
-      Update
+      <span class="htmx-request-hide">Update</span>
+      <span class="htmx-indicator">
+        <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+        </svg>
+        Updating…
+      </span>
     </button>
   </div>
 

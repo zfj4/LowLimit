@@ -798,3 +798,36 @@ class TestUpdateResultsView:
         mock_update.return_value = []
         logged_in_client.post(reverse('update_results'))
         mock_update.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# v0.2.3.1 — Loading indicators on slow buttons
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestLoadingIndicators:
+    """Reload Games and Update buttons show a spinner while their request is in flight."""
+
+    @patch('betting.utils.generate_events')
+    def test_reload_games_button_has_htmx_indicator(self, mock_gen, logged_in_client, mens_event):
+        """The Reload Games button contains an htmx-indicator element for the spinner."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b'htmx-indicator' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_reload_games_button_has_disabled_elt(self, mock_gen, logged_in_client, mens_event):
+        """The Reload Games button uses hx-disabled-elt to prevent double-clicks."""
+        mock_gen.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b'hx-disabled-elt' in response.content
+
+    def test_update_button_has_htmx_indicator(self, logged_in_client):
+        """The Update button contains an htmx-indicator element for the spinner."""
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'htmx-indicator' in response.content
+
+    def test_update_button_has_disabled_elt(self, logged_in_client):
+        """The Update button uses hx-disabled-elt to prevent double-clicks."""
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'hx-disabled-elt' in response.content
