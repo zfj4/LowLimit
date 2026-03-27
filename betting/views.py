@@ -158,7 +158,7 @@ def _deposit_menu_response(request, weekly_deposited, weekly_remaining,
 def events_menu_view(request):
     force_refresh = request.GET.get('refresh') == '1'
     sport = request.GET.get('sport', '')  # 'M', 'W', or '' (all)
-    all_events = get_or_generate_events(force_refresh=force_refresh)
+    all_events = get_or_generate_events(force_refresh=force_refresh).filter(status='upcoming')
     events = all_events.filter(gender=sport) if sport else all_events.none()
     user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=all_events)}
     context = {
@@ -182,7 +182,7 @@ def place_wager_view(request):
     except InvalidOperation:
         amount = Decimal('0')
 
-    all_events = get_or_generate_events()
+    all_events = get_or_generate_events().filter(status='upcoming')
     user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=all_events)}
     display_events = all_events.filter(gender=sport) if sport else all_events.none()
 
@@ -220,7 +220,7 @@ def place_wager_view(request):
     account.save()
 
     # Refresh data for re-render
-    all_events = get_or_generate_events()
+    all_events = get_or_generate_events().filter(status='upcoming')
     user_wagers = {w.event_id: w for w in Wager.objects.filter(user=request.user, event__in=all_events)}
     display_events = all_events.filter(gender=sport) if sport else all_events.none()
     ctx = {

@@ -214,6 +214,27 @@ class TestEventsMenuView:
         # The key is no error is raised
         assert True  # Just verifying no exception
 
+    @patch('betting.utils.generate_events')
+    def test_completed_events_not_shown(self, mock_generate, logged_in_client, db):
+        """Events with status='final' must not appear in the Place Wager menu."""
+        mock_generate.return_value = []
+        SportingEvent.objects.create(
+            home_team='Done Home', away_team='Done Away',
+            event_time=timezone.now() - timezone.timedelta(hours=3),
+            spread=Decimal('-3.5'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=get_week_start().date(),
+            status='final', home_score=80, away_score=70,
+        )
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'Done Home' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_upcoming_events_still_shown(self, mock_generate, logged_in_client, upcoming_event):
+        """Events with status='upcoming' are still displayed."""
+        mock_generate.return_value = []
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'Duke Blue Devils' in response.content
+
 
 @pytest.mark.django_db
 class TestPlaceWagerView:
