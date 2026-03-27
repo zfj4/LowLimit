@@ -301,6 +301,50 @@ class TestHistoryMenuView:
         # The logged-in user has no wagers — their history should show empty state
         assert Wager.objects.filter(user__username='viewtest').count() == 0
 
+    def test_history_sorted_by_event_time_ascending(self, logged_in_client, user, db):
+        """Wagers are listed earliest event first, regardless of wager creation order."""
+        earlier = SportingEvent.objects.create(
+            home_team='Team A', away_team='Team B',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('-2.5'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=get_week_start().date(),
+        )
+        later = SportingEvent.objects.create(
+            home_team='Team C', away_team='Team D',
+            event_time=timezone.now() + timezone.timedelta(days=3),
+            spread=Decimal('-1.5'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=get_week_start().date(),
+        )
+        # Create wager on earlier event FIRST so -created_at would put it LAST
+        # (confirming we sort by event_time, not created_at)
+        Wager.objects.create(user=user, event=earlier, amount=Decimal('1.00'), pick='home')
+        Wager.objects.create(user=user, event=later, amount=Decimal('1.00'), pick='home')
+        response = logged_in_client.get(reverse('history_menu'))
+        content = response.content.decode()
+        # With -created_at (old), Team C would appear first; with event_time asc, Team A is first
+        assert content.index('Team A') < content.index('Team C')
+
+    def test_history_earliest_event_appears_first(self, logged_in_client, user, db):
+        """The event with the soonest start time is at the top of the list."""
+        first = SportingEvent.objects.create(
+            home_team='Early Home', away_team='Early Away',
+            event_time=timezone.now() + timezone.timedelta(hours=2),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender='W', week_start=get_week_start().date(),
+        )
+        second = SportingEvent.objects.create(
+            home_team='Late Home', away_team='Late Away',
+            event_time=timezone.now() + timezone.timedelta(days=5),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender='W', week_start=get_week_start().date(),
+        )
+        # Create early-event wager first so -created_at would put Late Home first
+        Wager.objects.create(user=user, event=first, amount=Decimal('1.00'), pick='away')
+        Wager.objects.create(user=user, event=second, amount=Decimal('1.00'), pick='away')
+        response = logged_in_client.get(reverse('history_menu'))
+        content = response.content.decode()
+        assert content.index('Early Home') < content.index('Late Home')
+
 
 # ---------------------------------------------------------------------------
 # v0.1.1 — Banner title and Place Bet buttons

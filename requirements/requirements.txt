@@ -74,4 +74,6 @@ Version 0.2.2.1:
 * Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
 * The Wager History screen shall display the spread at the time the wager was placed. Display this after the team name in the "Picked" field. For example: "Picked: Tennessee +3.5" or "Picked: Houston -2.5".
 
-
+Version 0.2.2.2:
+* Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
+* The Wager History screen shall be sorted by date and time of event, with the earliest at the top.

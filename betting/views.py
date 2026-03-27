@@ -243,7 +243,7 @@ def history_menu_view(request):
     wagers = (
         Wager.objects.filter(user=request.user)
         .select_related('event')
-        .order_by('-created_at')
+        .order_by('event__event_time')
     )
     return render(request, 'betting/partials/history_menu.html', {'wagers': wagers})
 
