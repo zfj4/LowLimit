@@ -215,6 +215,20 @@ class TestEventsMenuView:
         assert True  # Just verifying no exception
 
     @patch('betting.utils.generate_events')
+    def test_past_upcoming_events_not_shown(self, mock_generate, logged_in_client, db):
+        """Events that are still status='upcoming' but whose time has passed are hidden."""
+        mock_generate.return_value = []
+        SportingEvent.objects.create(
+            home_team='Past Home', away_team='Past Away',
+            event_time=timezone.now() - timezone.timedelta(hours=3),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=get_week_start().date(),
+            status='upcoming',  # not yet settled in DB
+        )
+        response = logged_in_client.get(reverse('events_menu') + '?sport=M')
+        assert b'Past Home' not in response.content
+
+    @patch('betting.utils.generate_events')
     def test_completed_events_not_shown(self, mock_generate, logged_in_client, db):
         """Events with status='final' must not appear in the Place Wager menu."""
         mock_generate.return_value = []
@@ -935,8 +949,10 @@ class TestEventTimeDisplay:
         from django.utils import timezone as tz
         eastern = pytz.timezone('America/New_York')
         from betting.utils import get_week_start
-        # 23:10 UTC = 7:10 PM EDT
-        event_utc = tz.datetime(2026, 3, 26, 23, 10, tzinfo=pytz.utc)
+        # 23:10 UTC = 7:10 PM EDT — use a future date so the event isn't filtered out
+        from datetime import timedelta
+        tomorrow = tz.now() + timedelta(days=1)
+        event_utc = tomorrow.replace(hour=23, minute=10, second=0, microsecond=0)
         event = SportingEvent.objects.create(
             home_team='Purdue', away_team='Texas',
             event_time=event_utc,

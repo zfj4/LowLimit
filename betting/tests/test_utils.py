@@ -740,6 +740,25 @@ class TestUpdateEventResults:
         assert result[0].pk == wager.pk
 
     @patch('betting.utils.scrape_espn_scores')
+    def test_uses_eastern_date_not_utc_for_scraping(self, mock_scrape):
+        """Event at 01:45 UTC (21:45 Eastern previous day) must scrape the Eastern date."""
+        import pytz
+        from datetime import datetime, date
+        # 2026-03-28 01:45 UTC = 2026-03-27 21:45 EDT — ESPN page is 20260327
+        event_utc = datetime(2026, 3, 28, 1, 45, tzinfo=pytz.utc)
+        SportingEvent.objects.create(
+            home_team='Iowa State', away_team='Tennessee',
+            event_time=event_utc,
+            spread=Decimal('-3.5'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=date(2026, 3, 23), status='upcoming',
+        )
+        mock_scrape.return_value = []
+        update_event_results()
+        called_dates = mock_scrape.call_args[0][0]
+        assert date(2026, 3, 27) in called_dates      # Eastern date
+        assert date(2026, 3, 28) not in called_dates  # UTC date — wrong
+
+    @patch('betting.utils.scrape_espn_scores')
     def test_settles_wagers_when_duplicate_events_exist(self, mock_scrape):
         """If two upcoming past events share home/away names, both are settled."""
         event1 = self._make_past_event(home='Purdue', away='Texas')

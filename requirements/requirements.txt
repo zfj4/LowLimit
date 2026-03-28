@@ -108,3 +108,7 @@ Version 0.2.5:
 * Place Start Date and End Date fields to the left of the All/Completed/Pending selector.
 * Use one or both date fields to subset or further subset the list of wagers when a date is selected.
 * Display an error message when End Date is before Start date.
+
+Version 0.2.5.0.1:
+* Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
+* Bug: The Wager History and Place Wager partials are both displaying, on 3/28/2026, games that completed on 3/27/2026. This is after executing a hard reload and clicking the Refresh and Update buttons on each partial.

@@ -291,7 +291,8 @@ def update_event_results():
     if not past_events.exists():
         return []
 
-    dates = list({e.event_time.date() for e in past_events})
+    eastern = pytz.timezone('America/New_York')
+    dates = list({e.event_time.astimezone(eastern).date() for e in past_events})
     scores = scrape_espn_scores(dates)
 
     settled = []
