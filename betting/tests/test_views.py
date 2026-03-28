@@ -322,6 +322,83 @@ class TestHistoryMenuView:
         # The logged-in user has no wagers — their history should show empty state
         assert Wager.objects.filter(user__username='viewtest').count() == 0
 
+
+# ---------------------------------------------------------------------------
+# v0.2.4 — Wager History filter dropdown
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestWagerHistoryFilter:
+    """Wager History has a dropdown to filter by All / Completed / Pending."""
+
+    def _make_wagers(self, user, upcoming_event):
+        pending = Wager.objects.create(
+            user=user, event=upcoming_event, amount=Decimal('2.00'), pick='home',
+        )
+        won = Wager.objects.create(
+            user=user, event=upcoming_event, amount=Decimal('3.00'), pick='away',
+            status='won', payout=Decimal('2.73'),
+        )
+        # We need a second event for the lost wager (can't have two wagers on same event)
+        from betting.utils import get_week_start
+        event2 = SportingEvent.objects.create(
+            home_team='Team X', away_team='Team Y',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender='M', week_start=get_week_start().date(),
+        )
+        lost = Wager.objects.create(
+            user=user, event=event2, amount=Decimal('4.00'), pick='home',
+            status='lost', payout=Decimal('0.00'),
+        )
+        return pending, won, lost
+
+    def test_history_has_filter_dropdown(self, logged_in_client):
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'All' in response.content
+        assert b'Completed' in response.content
+        assert b'Pending' in response.content
+
+    def test_default_shows_all_wagers(self, logged_in_client, user, upcoming_event):
+        pending, won, lost = self._make_wagers(user, upcoming_event)
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'2.00' in response.content  # pending
+        assert b'3.00' in response.content  # won
+        assert b'4.00' in response.content  # lost
+
+    def test_all_filter_shows_all_wagers(self, logged_in_client, user, upcoming_event):
+        pending, won, lost = self._make_wagers(user, upcoming_event)
+        response = logged_in_client.get(reverse('history_menu') + '?filter=all')
+        assert b'2.00' in response.content
+        assert b'3.00' in response.content
+        assert b'4.00' in response.content
+
+    def test_completed_filter_shows_won_and_lost(self, logged_in_client, user, upcoming_event):
+        pending, won, lost = self._make_wagers(user, upcoming_event)
+        response = logged_in_client.get(reverse('history_menu') + '?filter=completed')
+        assert b'3.00' in response.content  # won
+        assert b'4.00' in response.content  # lost
+
+    def test_completed_filter_excludes_pending(self, logged_in_client, user, upcoming_event):
+        pending, won, lost = self._make_wagers(user, upcoming_event)
+        response = logged_in_client.get(reverse('history_menu') + '?filter=completed')
+        assert b'2.00' not in response.content  # pending excluded
+
+    def test_pending_filter_shows_only_pending(self, logged_in_client, user, upcoming_event):
+        pending, won, lost = self._make_wagers(user, upcoming_event)
+        response = logged_in_client.get(reverse('history_menu') + '?filter=pending')
+        assert b'2.00' in response.content  # pending shown
+
+    def test_pending_filter_excludes_completed(self, logged_in_client, user, upcoming_event):
+        pending, won, lost = self._make_wagers(user, upcoming_event)
+        response = logged_in_client.get(reverse('history_menu') + '?filter=pending')
+        assert b'3.00' not in response.content  # won excluded
+        assert b'4.00' not in response.content  # lost excluded
+
+    def test_selected_filter_reflected_in_dropdown(self, logged_in_client):
+        response = logged_in_client.get(reverse('history_menu') + '?filter=pending')
+        assert b'selected' in response.content
+
     def test_history_sorted_by_event_time_ascending(self, logged_in_client, user, db):
         """Wagers are listed earliest event first, regardless of wager creation order."""
         earlier = SportingEvent.objects.create(

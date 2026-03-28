@@ -95,3 +95,9 @@ Version 0.2.3.1:
 Version 0.2.3.2:
 * Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
 * Wager History correctly lists all wagers, WON, LOST, and PENDING. The Place Wager screen should only show upcoming events. It should not show completed events.
+
+Version 0.2.4:
+* Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
+* The Wager History partial shall have a selector dropdown to display All, Completed, or Pending wagers.
+* The partial shall initially show All, as it currently does.
+* The user shall be able do choose to only see Completed or Pending wagers, and to see All wagers again.

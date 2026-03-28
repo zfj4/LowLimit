@@ -241,12 +241,17 @@ def place_wager_view(request):
 
 @login_required
 def history_menu_view(request):
-    wagers = (
-        Wager.objects.filter(user=request.user)
-        .select_related('event')
-        .order_by('event__event_time')
-    )
-    return render(request, 'betting/partials/history_menu.html', {'wagers': wagers})
+    wager_filter = request.GET.get('filter', 'all')
+    qs = Wager.objects.filter(user=request.user).select_related('event')
+    if wager_filter == 'completed':
+        qs = qs.filter(status__in=('won', 'lost', 'push'))
+    elif wager_filter == 'pending':
+        qs = qs.filter(status='pending')
+    wagers = qs.order_by('event__event_time')
+    return render(request, 'betting/partials/history_menu.html', {
+        'wagers': wagers,
+        'wager_filter': wager_filter,
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -257,12 +262,17 @@ def history_menu_view(request):
 @require_POST
 def update_results_view(request):
     update_event_results()
-    wagers = (
-        Wager.objects.filter(user=request.user)
-        .select_related('event')
-        .order_by('event__event_time')
-    )
-    html = render(request, 'betting/partials/history_menu.html', {'wagers': wagers}).content.decode()
+    wager_filter = request.POST.get('filter', 'all')
+    qs = Wager.objects.filter(user=request.user).select_related('event')
+    if wager_filter == 'completed':
+        qs = qs.filter(status__in=('won', 'lost', 'push'))
+    elif wager_filter == 'pending':
+        qs = qs.filter(status='pending')
+    wagers = qs.order_by('event__event_time')
+    html = render(request, 'betting/partials/history_menu.html', {
+        'wagers': wagers,
+        'wager_filter': wager_filter,
+    }).content.decode()
     html += _render_banner_oob(request)
     return HttpResponse(html)
 
