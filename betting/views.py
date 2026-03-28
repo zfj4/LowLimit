@@ -242,15 +242,38 @@ def place_wager_view(request):
 @login_required
 def history_menu_view(request):
     wager_filter = request.GET.get('filter', 'all')
+    start_date = request.GET.get('start_date', '')
+    end_date = request.GET.get('end_date', '')
+
     qs = Wager.objects.filter(user=request.user).select_related('event')
     if wager_filter == 'completed':
         qs = qs.filter(status__in=('won', 'lost', 'push'))
     elif wager_filter == 'pending':
         qs = qs.filter(status='pending')
+
+    date_error = None
+    if start_date or end_date:
+        try:
+            from datetime import date as date_type
+            sd = date_type.fromisoformat(start_date) if start_date else None
+            ed = date_type.fromisoformat(end_date) if end_date else None
+            if sd and ed and ed < sd:
+                date_error = 'End Date must be on or after Start Date.'
+            else:
+                if sd:
+                    qs = qs.filter(event__event_time__date__gte=sd)
+                if ed:
+                    qs = qs.filter(event__event_time__date__lte=ed)
+        except ValueError:
+            pass
+
     wagers = qs.order_by('event__event_time')
     return render(request, 'betting/partials/history_menu.html', {
         'wagers': wagers,
         'wager_filter': wager_filter,
+        'start_date': start_date,
+        'end_date': end_date,
+        'date_error': date_error,
     })
 
 
@@ -263,15 +286,38 @@ def history_menu_view(request):
 def update_results_view(request):
     update_event_results()
     wager_filter = request.POST.get('filter', 'all')
+    start_date = request.POST.get('start_date', '')
+    end_date = request.POST.get('end_date', '')
+
     qs = Wager.objects.filter(user=request.user).select_related('event')
     if wager_filter == 'completed':
         qs = qs.filter(status__in=('won', 'lost', 'push'))
     elif wager_filter == 'pending':
         qs = qs.filter(status='pending')
+
+    date_error = None
+    if start_date or end_date:
+        try:
+            from datetime import date as date_type
+            sd = date_type.fromisoformat(start_date) if start_date else None
+            ed = date_type.fromisoformat(end_date) if end_date else None
+            if sd and ed and ed < sd:
+                date_error = 'End Date must be on or after Start Date.'
+            else:
+                if sd:
+                    qs = qs.filter(event__event_time__date__gte=sd)
+                if ed:
+                    qs = qs.filter(event__event_time__date__lte=ed)
+        except ValueError:
+            pass
+
     wagers = qs.order_by('event__event_time')
     html = render(request, 'betting/partials/history_menu.html', {
         'wagers': wagers,
         'wager_filter': wager_filter,
+        'start_date': start_date,
+        'end_date': end_date,
+        'date_error': date_error,
     }).content.decode()
     html += _render_banner_oob(request)
     return HttpResponse(html)

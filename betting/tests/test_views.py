@@ -399,6 +399,93 @@ class TestWagerHistoryFilter:
         response = logged_in_client.get(reverse('history_menu') + '?filter=pending')
         assert b'selected' in response.content
 
+
+# ---------------------------------------------------------------------------
+# v0.2.5 — Wager History date range filter
+# ---------------------------------------------------------------------------
+
+@pytest.mark.django_db
+class TestWagerHistoryDateFilter:
+    """Start Date and End Date fields subset the wager list by event date."""
+
+    def _event_on(self, days_offset, gender='M'):
+        from betting.utils import get_week_start
+        return SportingEvent.objects.create(
+            home_team=f'Home{days_offset}', away_team=f'Away{days_offset}',
+            event_time=timezone.now() + timezone.timedelta(days=days_offset),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender=gender, week_start=get_week_start().date(),
+        )
+
+    def test_history_has_start_date_input(self, logged_in_client):
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'start_date' in response.content
+
+    def test_history_has_end_date_input(self, logged_in_client):
+        response = logged_in_client.get(reverse('history_menu'))
+        assert b'end_date' in response.content
+
+    def test_start_date_excludes_earlier_wagers(self, logged_in_client, user):
+        early = self._event_on(1)
+        late = self._event_on(5)
+        Wager.objects.create(user=user, event=early, amount=Decimal('1.00'), pick='home')
+        Wager.objects.create(user=user, event=late, amount=Decimal('2.00'), pick='home')
+        start = (timezone.now() + timezone.timedelta(days=3)).strftime('%Y-%m-%d')
+        response = logged_in_client.get(reverse('history_menu') + f'?start_date={start}')
+        assert b'2.00' in response.content
+        assert b'1.00' not in response.content
+
+    def test_end_date_excludes_later_wagers(self, logged_in_client, user):
+        early = self._event_on(1)
+        late = self._event_on(5)
+        Wager.objects.create(user=user, event=early, amount=Decimal('1.00'), pick='home')
+        Wager.objects.create(user=user, event=late, amount=Decimal('2.00'), pick='home')
+        end = (timezone.now() + timezone.timedelta(days=3)).strftime('%Y-%m-%d')
+        response = logged_in_client.get(reverse('history_menu') + f'?end_date={end}')
+        assert b'1.00' in response.content
+        assert b'2.00' not in response.content
+
+    def test_both_dates_show_only_range(self, logged_in_client, user):
+        early = self._event_on(1)
+        mid = self._event_on(3)
+        late = self._event_on(6)
+        Wager.objects.create(user=user, event=early, amount=Decimal('1.00'), pick='home')
+        Wager.objects.create(user=user, event=mid, amount=Decimal('2.00'), pick='home')
+        Wager.objects.create(user=user, event=late, amount=Decimal('3.00'), pick='home')
+        start = (timezone.now() + timezone.timedelta(days=2)).strftime('%Y-%m-%d')
+        end = (timezone.now() + timezone.timedelta(days=4)).strftime('%Y-%m-%d')
+        response = logged_in_client.get(
+            reverse('history_menu') + f'?start_date={start}&end_date={end}'
+        )
+        assert b'2.00' in response.content
+        assert b'1.00' not in response.content
+        assert b'3.00' not in response.content
+
+    def test_end_before_start_shows_error(self, logged_in_client):
+        start = (timezone.now() + timezone.timedelta(days=5)).strftime('%Y-%m-%d')
+        end = (timezone.now() + timezone.timedelta(days=2)).strftime('%Y-%m-%d')
+        response = logged_in_client.get(
+            reverse('history_menu') + f'?start_date={start}&end_date={end}'
+        )
+        assert b'End Date' in response.content
+        assert b'Start Date' in response.content
+
+    def test_date_and_status_filter_combine(self, logged_in_client, user):
+        early = self._event_on(1)
+        late = self._event_on(5)
+        Wager.objects.create(user=user, event=early, amount=Decimal('1.00'), pick='home')
+        Wager.objects.create(
+            user=user, event=late, amount=Decimal('2.00'), pick='home',
+            status='won', payout=Decimal('1.82'),
+        )
+        end = (timezone.now() + timezone.timedelta(days=3)).strftime('%Y-%m-%d')
+        response = logged_in_client.get(
+            reverse('history_menu') + f'?end_date={end}&filter=completed'
+        )
+        # Only the early pending wager is in range, but filter=completed excludes it
+        assert b'1.00' not in response.content
+        assert b'2.00' not in response.content
+
     def test_history_sorted_by_event_time_ascending(self, logged_in_client, user, db):
         """Wagers are listed earliest event first, regardless of wager creation order."""
         earlier = SportingEvent.objects.create(

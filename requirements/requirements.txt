@@ -101,3 +101,10 @@ Version 0.2.4:
 * The Wager History partial shall have a selector dropdown to display All, Completed, or Pending wagers.
 * The partial shall initially show All, as it currently does.
 * The user shall be able do choose to only see Completed or Pending wagers, and to see All wagers again.
+
+Version 0.2.5:
+* Follow Test Driven Development (TDD) practices, writing tests for each feature before implementing the feature itself, and ensuring that all tests pass before moving on to the next feature.
+* Add an optional date range to the top of the Wager History partial.
+* Place Start Date and End Date fields to the left of the All/Completed/Pending selector.
+* Use one or both date fields to subset or further subset the list of wagers when a date is selected.
+* Display an error message when End Date is before Start date.

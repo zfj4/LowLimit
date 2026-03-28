@@ -1,25 +1,37 @@
 {% load betting_tags %}
 <div>
 
-  <div class="flex items-center justify-between mb-4">
+  <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
     <h2 class="text-xl font-bold text-tardis">Wager History</h2>
-    <div class="flex items-center gap-3">
-      <select name="filter"
-              hx-get="{% url 'history_menu' %}"
-              hx-target="#content"
-              hx-swap="innerHTML"
-              hx-trigger="change"
-              class="px-3 py-1.5 rounded-lg border border-s-blue bg-nw-blue text-tardis text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-bleu">
-        <option value="all"       {% if wager_filter == 'all' or not wager_filter %}selected{% endif %}>All</option>
-        <option value="completed" {% if wager_filter == 'completed' %}selected{% endif %}>Completed</option>
-        <option value="pending"   {% if wager_filter == 'pending' %}selected{% endif %}>Pending</option>
-      </select>
+    <div class="flex flex-wrap items-center gap-2">
+
+      <!-- Date range + status filter — all submitted together on any change -->
+      <form id="history-filters"
+            hx-get="{% url 'history_menu' %}"
+            hx-target="#content"
+            hx-swap="innerHTML"
+            hx-trigger="change from:input, change from:select"
+            class="flex flex-wrap items-center gap-2">
+        <input type="date" name="start_date" value="{{ start_date }}"
+               title="Start Date"
+               class="px-2 py-1.5 rounded-lg border border-s-blue bg-nw-blue text-tardis text-sm focus:outline-none focus:ring-2 focus:ring-bleu" />
+        <input type="date" name="end_date" value="{{ end_date }}"
+               title="End Date"
+               class="px-2 py-1.5 rounded-lg border border-s-blue bg-nw-blue text-tardis text-sm focus:outline-none focus:ring-2 focus:ring-bleu" />
+        <select name="filter"
+                class="px-3 py-1.5 rounded-lg border border-s-blue bg-nw-blue text-tardis text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-bleu">
+          <option value="all"       {% if wager_filter == 'all' or not wager_filter %}selected{% endif %}>All</option>
+          <option value="completed" {% if wager_filter == 'completed' %}selected{% endif %}>Completed</option>
+          <option value="pending"   {% if wager_filter == 'pending' %}selected{% endif %}>Pending</option>
+        </select>
+      </form>
+
     <button
       hx-post="{% url 'update_results' %}"
       hx-target="#content"
       hx-swap="innerHTML"
       hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-      hx-vals='{"filter": "{{ wager_filter|default:"all" }}"}'
+      hx-include="#history-filters"
       hx-disabled-elt="this"
       class="px-4 py-1.5 rounded-full text-sm font-semibold bg-tardis text-white hover:opacity-90 transition">
       <span class="htmx-request-hide">Update</span>
@@ -33,6 +45,12 @@
     </button>
     </div>
   </div>
+
+  {% if date_error %}
+  <div class="mb-3 px-4 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+    {{ date_error }}
+  </div>
+  {% endif %}
 
   {% if not wagers %}
   <div class="text-center text-bleu py-12 opacity-60">
