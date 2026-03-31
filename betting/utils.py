@@ -93,6 +93,27 @@ def settle_wager(wager):
     wager.save()
 
 
+def _opposite_moneyline(fav_odds):
+    """Given a favorite's moneyline (negative int), return the underdog's moneyline.
+
+    Uses the standard bookmaker vig of ~4.76% (same as -110/-110 basketball default),
+    where the total implied probability across both sides equals 1.0476.
+
+    Example: -156 → +128 (ATL -156 paired with OAK +128 gives ~4.8% book edge).
+    """
+    if fav_odds >= 0:
+        return -110  # not a favorite line; return even default
+    f = abs(fav_odds)
+    p_fav = f / (f + 100.0)
+    # Standard vig: same overround as -110/-110 (104.76% total implied)
+    p_und = 1.0476 - p_fav
+    if p_und <= 0:
+        return 100
+    if p_und >= 0.5:
+        return -int(round(p_und / (1.0 - p_und) * 100))
+    return int(round((1.0 - p_und) / p_und * 100))
+
+
 def _abbr_matches(abbr, team_name):
     """Return True if ESPN abbreviation matches the team name.
 
@@ -107,14 +128,23 @@ def _abbr_matches(abbr, team_name):
     return abbr.startswith(initials)
 
 
-def scrape_espn_schedule(start_date, end_date):
-    """Scrape real NCAA basketball games with betting lines from ESPN schedule pages."""
+def scrape_espn_schedule(start_date, end_date, sport_genders=None):
+    """Scrape ESPN schedule pages for the given date range and sport genders.
+
+    sport_genders: optional set of gender codes (e.g. {'M', 'W'} or {'B'}).
+    If None, all sports are scraped.
+    """
     from bs4 import BeautifulSoup
 
     games = []
-    endpoints = [
+    all_endpoints = [
         ('mens-college-basketball', 'M'),
         ('womens-college-basketball', 'W'),
+        ('mlb', 'B'),
+    ]
+    endpoints = [
+        (slug, g) for slug, g in all_endpoints
+        if sport_genders is None or g in sport_genders
     ]
     eastern = pytz.timezone('America/New_York')
 
@@ -142,7 +172,10 @@ def scrape_espn_schedule(start_date, end_date):
                 continue
 
             soup = BeautifulSoup(html, 'html.parser')
-            for row in soup.find_all('tr'):
+            first_table = soup.find('table')
+            if not first_table:
+                continue
+            for row in first_table.find_all('tr'):
                 tds = row.find_all('td')
                 if len(tds) < 3:
                     continue
@@ -180,10 +213,22 @@ def scrape_espn_schedule(start_date, end_date):
                         if m:
                             fav_abbr = m.group(1)
                             fav_value = float(m.group(2))
-                            if _abbr_matches(fav_abbr, home_team):
-                                spread = fav_value
-                            elif _abbr_matches(fav_abbr, away_team):
-                                spread = -fav_value
+                            if gender == 'B':
+                                # MLB: the Line value is a moneyline, not a point spread.
+                                # spread stays 0; assign moneyline to the correct team.
+                                fav_ml = int(fav_value)
+                                und_ml = _opposite_moneyline(fav_ml)
+                                if _abbr_matches(fav_abbr, home_team):
+                                    home_odds = fav_ml
+                                    away_odds = und_ml
+                                elif _abbr_matches(fav_abbr, away_team):
+                                    away_odds = fav_ml
+                                    home_odds = und_ml
+                            else:
+                                if _abbr_matches(fav_abbr, home_team):
+                                    spread = fav_value
+                                elif _abbr_matches(fav_abbr, away_team):
+                                    spread = -fav_value
 
                     games.append({
                         'home_team': home_team,
@@ -213,6 +258,7 @@ def scrape_espn_scores(dates):
     endpoints = [
         ('mens-college-basketball', 'M'),
         ('womens-college-basketball', 'W'),
+        ('mlb', 'B'),
     ]
 
     for sport_slug, gender in endpoints:
@@ -233,7 +279,10 @@ def scrape_espn_scores(dates):
                 continue
 
             soup = BeautifulSoup(html, 'html.parser')
-            for row in soup.find_all('tr'):
+            first_table = soup.find('table')
+            if not first_table:
+                continue
+            for row in first_table.find_all('tr'):
                 tds = row.find_all('td')
                 if len(tds) < 3:
                     continue
@@ -318,12 +367,18 @@ def update_event_results():
 
 
 def generate_events():
-    """Scrape real NCAA games with real betting lines from ESPN schedule pages."""
+    """Scrape upcoming events with betting lines from ESPN schedule pages.
+
+    Basketball (M/W): full current week.
+    MLB: today only — ESPN publishes moneylines only for today's games.
+    """
     from datetime import date
 
     today = date.today()
     week_end = today + timedelta(days=6 - today.weekday())
-    return scrape_espn_schedule(today, week_end)
+    basketball = scrape_espn_schedule(today, week_end, sport_genders={'M', 'W'})
+    mlb = scrape_espn_schedule(today, today, sport_genders={'B'})
+    return basketball + mlb
 
 
 def get_or_generate_events(force_refresh=False):
@@ -335,6 +390,14 @@ def get_or_generate_events(force_refresh=False):
 
     if events.exists() and not force_refresh:
         return events
+
+    if force_refresh:
+        # MLB lines are only available for today's games; remove future MLB events
+        # that have no pending wagers (they were stored with -110 placeholder odds).
+        SportingEvent.objects.filter(
+            gender='B', status='upcoming', event_time__gte=timezone.now(),
+            week_start=week_start,
+        ).exclude(wagers__status='pending').delete()
 
     games = generate_events()
 

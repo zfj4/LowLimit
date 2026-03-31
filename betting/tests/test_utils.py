@@ -481,12 +481,44 @@ class TestGenerateEvents:
 
     @patch('betting.utils.scrape_espn_schedule')
     def test_returns_scraped_games(self, mock_scrape):
-        games = [{'home_team': 'Purdue', 'away_team': 'Texas',
-                  'event_datetime': '2025-03-25T23:10:00+00:00',
-                  'gender': 'M', 'spread': -7.5, 'home_odds': -110, 'away_odds': -110}]
-        mock_scrape.return_value = games
+        bball_game = {'home_team': 'Purdue', 'away_team': 'Texas',
+                      'event_datetime': '2025-03-25T23:10:00+00:00',
+                      'gender': 'M', 'spread': -7.5, 'home_odds': -110, 'away_odds': -110}
+        mlb_game = {'home_team': 'Yankees', 'away_team': 'Red Sox',
+                    'event_datetime': '2025-03-25T23:10:00+00:00',
+                    'gender': 'B', 'spread': 0.0, 'home_odds': -156, 'away_odds': 128}
+        mock_scrape.side_effect = [[bball_game], [mlb_game]]
         result = generate_events()
-        assert result == games
+        assert bball_game in result
+        assert mlb_game in result
+
+    @patch('betting.utils.scrape_espn_schedule')
+    def test_mlb_scraped_today_only(self, mock_scrape):
+        """MLB is scraped only for today; basketball gets the full week."""
+        mock_scrape.return_value = []
+        generate_events()
+        calls = mock_scrape.call_args_list
+        # There should be two calls: basketball (full week) and MLB (today only)
+        assert len(calls) == 2
+        bball_call, mlb_call = calls
+        bball_start, bball_end = bball_call[0][0], bball_call[0][1]
+        mlb_start, mlb_end = mlb_call[0][0], mlb_call[0][1]
+        from datetime import date
+        assert bball_end > bball_start    # basketball spans multiple days
+        assert mlb_start == mlb_end       # MLB: today only (start == end)
+        assert mlb_start == date.today()  # MLB: today
+
+    @patch('betting.utils.scrape_espn_schedule')
+    def test_basketball_scraped_with_sport_genders_m_w(self, mock_scrape):
+        """Basketball call uses sport_genders={'M','W'}; MLB call uses sport_genders={'B'}."""
+        mock_scrape.return_value = []
+        generate_events()
+        calls = mock_scrape.call_args_list
+        assert len(calls) == 2
+        bball_kwargs = calls[0][1]
+        mlb_kwargs = calls[1][1]
+        assert bball_kwargs.get('sport_genders') == {'M', 'W'}
+        assert mlb_kwargs.get('sport_genders') == {'B'}
 
 
 @pytest.mark.django_db
@@ -531,6 +563,39 @@ class TestGetOrGenerateEvents:
         mock_gen.return_value = [self.SAMPLE_GAME, second_game]
         get_or_generate_events(force_refresh=True)
         assert SportingEvent.objects.count() == 2
+
+    @patch('betting.utils.generate_events')
+    def test_force_refresh_removes_stale_future_mlb_events(self, mock_gen):
+        """force_refresh=True deletes future MLB events with no pending wagers (stale -110 games)."""
+        from betting.utils import get_or_generate_events, get_week_start
+        mock_gen.return_value = []
+        # Create a future MLB event with default -110 odds (stale, no wager)
+        SportingEvent.objects.create(
+            home_team='Yankees', away_team='Red Sox',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('0.0'), home_odds=-110, away_odds=-110,
+            gender='B', week_start=get_week_start().date(),
+        )
+        assert SportingEvent.objects.filter(gender='B').count() == 1
+        get_or_generate_events(force_refresh=True)
+        assert SportingEvent.objects.filter(gender='B').count() == 0
+
+    @patch('betting.utils.generate_events')
+    def test_force_refresh_keeps_mlb_events_with_pending_wagers(self, mock_gen):
+        """force_refresh=True must not delete MLB events that have a pending wager."""
+        from betting.utils import get_or_generate_events, get_week_start
+        from django.contrib.auth.models import User
+        mock_gen.return_value = []
+        event = SportingEvent.objects.create(
+            home_team='Yankees', away_team='Red Sox',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('0.0'), home_odds=-156, away_odds=128,
+            gender='B', week_start=get_week_start().date(),
+        )
+        user = User.objects.create_user(username='mlbwagertest', password='testpass123')
+        Wager.objects.create(user=user, event=event, amount=Decimal('5.00'), pick='home')
+        get_or_generate_events(force_refresh=True)
+        assert SportingEvent.objects.filter(pk=event.pk).exists()
 
     @patch('betting.utils.generate_events')
     def test_force_refresh_does_not_duplicate_wagered_events(self, mock_gen):
@@ -648,6 +713,258 @@ class TestScrapeEspnScores:
         from datetime import date
         scores = scrape_espn_scores([date(2025, 3, 25)])
         assert scores == []
+
+
+# ---------------------------------------------------------------------------
+# v0.2.6 — MLB support in scraping
+# ---------------------------------------------------------------------------
+
+_MLB_GAME_ROW = '''
+<tr>
+  <td class="events__col Table__TD"><div class="matchTeams">
+    <span class="Table__Team away">
+      <a href="/mlb/team/_/id/12/boston-red-sox"></a>
+      <a href="/mlb/team/_/id/12/boston-red-sox">Boston Red Sox</a>
+    </span>
+  </div></td>
+  <td class="colspan__col Table__TD"><div class="local flex items-center">
+    <span class="at">  @  </span>
+    <span class="Table__Team">
+      <a href="/mlb/team/_/id/10/new-york-yankees"></a>
+      <a href="/mlb/team/_/id/10/new-york-yankees">New York Yankees</a>
+    </span>
+  </div></td>
+  <td class="Table__TD">7:05 PM</td>
+  <td class="Table__TD">ESPN</td>
+  <td class="Table__TD">Tickets</td>
+  <td class="Table__TD">Yankee Stadium</td>
+  <td class="Table__TD"><a data-testid="OddsFragmentPointSpread">Line: NYY -156</a> O/U: 8.5</td>
+</tr>'''
+
+_MLB_AWAY_FAV_ROW = '''
+<tr>
+  <td class="events__col Table__TD"><div class="matchTeams">
+    <span class="Table__Team away">
+      <a href="/mlb/team/_/id/12/boston-red-sox"></a>
+      <a href="/mlb/team/_/id/12/boston-red-sox">Boston Red Sox</a>
+    </span>
+  </div></td>
+  <td class="colspan__col Table__TD"><div class="local flex items-center">
+    <span class="at">  @  </span>
+    <span class="Table__Team">
+      <a href="/mlb/team/_/id/10/new-york-yankees"></a>
+      <a href="/mlb/team/_/id/10/new-york-yankees">New York Yankees</a>
+    </span>
+  </div></td>
+  <td class="Table__TD">7:05 PM</td>
+  <td class="Table__TD">ESPN</td>
+  <td class="Table__TD">Tickets</td>
+  <td class="Table__TD">Yankee Stadium</td>
+  <td class="Table__TD"><a data-testid="OddsFragmentPointSpread">Line: BOS -156</a> O/U: 8.5</td>
+</tr>'''
+
+_MLB_SCORE_ROW = '''
+<tr>
+  <td class="events__col Table__TD"><div class="matchTeams">
+    <span class="Table__Team away">
+      <a href="/mlb/team/_/id/12/boston-red-sox"></a>
+      <a href="/mlb/team/_/id/12/boston-red-sox">Boston Red Sox</a>
+    </span>
+  </div></td>
+  <td class="colspan__col Table__TD"><div class="local">
+    <span class="Table__Team">
+      <a href="/mlb/team/_/id/10/new-york-yankees"></a>
+      <a href="/mlb/team/_/id/10/new-york-yankees">New York Yankees</a>
+    </span>
+  </div></td>
+  <td class="teams__col Table__TD"><a href="/mlb/game/_/gameId/401234567">BOS 3, NYY 5</a></td>
+  <td class="Table__TD"></td>
+  <td class="Table__TD"></td>
+  <td class="Table__TD"></td>
+  <td class="Table__TD"></td>
+</tr>'''
+
+
+class TestScrapeEspnFirstTableOnly:
+    """scrape_espn_schedule/scores only processes the first <table> on the page.
+
+    ESPN MLB pages include future-date sections (additional tables) with no odds.
+    Processing only the first table prevents those placeholder rows from being stored.
+    """
+
+    def _mock_resp(self, html):
+        m = MagicMock()
+        m.text = html
+        m.raise_for_status.return_value = None
+        return m
+
+    @patch('requests.get')
+    def test_schedule_ignores_rows_in_second_table(self, mock_get):
+        """Rows in a second <table> on the same page are ignored."""
+        # First table: one real game; second table: a game with no odds (future section)
+        future_row = _MENS_GAME_ROW.replace('Purdue', 'FutureHome').replace('Texas', 'FutureAway')
+        html = (
+            f'<html><body>'
+            f'<table><tbody>{_MENS_GAME_ROW}</tbody></table>'
+            f'<table><tbody>{future_row}</tbody></table>'
+            f'</body></html>'
+        )
+        mock_get.side_effect = [
+            self._mock_resp(html),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        team_names = [(g['home_team'], g['away_team']) for g in games]
+        assert ('Purdue', 'Texas') in team_names
+        assert ('FutureHome', 'FutureAway') not in team_names
+
+    @patch('requests.get')
+    def test_scores_ignores_rows_in_second_table(self, mock_get):
+        """Rows in a second <table> on the same scores page are ignored."""
+        future_score_row = _COMPLETED_GAME_ROW.replace('Purdue', 'FutureHome').replace('Texas', 'FutureAway')
+        html = (
+            f'<html><body>'
+            f'<table><tbody>{_COMPLETED_GAME_ROW}</tbody></table>'
+            f'<table><tbody>{future_score_row}</tbody></table>'
+            f'</body></html>'
+        )
+        mock_get.side_effect = [
+            self._mock_resp(html),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 4, 1)])
+        team_names = [(s['home_team'], s['away_team']) for s in scores]
+        assert ('Purdue', 'Texas') in team_names
+        assert ('FutureHome', 'FutureAway') not in team_names
+
+
+class TestScrapeEspnScheduleMlb:
+    """scrape_espn_schedule() also returns MLB games with gender='B'."""
+
+    def _mock_resp(self, html):
+        m = MagicMock()
+        m.text = html
+        m.raise_for_status.return_value = None
+        return m
+
+    @patch('requests.get')
+    def test_returns_mlb_games(self, mock_get):
+        """MLB games are returned with gender='B' when the MLB page has games."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),            # mens basketball - empty
+            self._mock_resp(_make_html('')),            # womens basketball - empty
+            self._mock_resp(_make_html(_MLB_GAME_ROW)), # mlb
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        assert len(games) == 1
+        assert games[0]['gender'] == 'B'
+
+    @patch('requests.get')
+    def test_mlb_game_has_correct_teams(self, mock_get):
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html(_MLB_GAME_ROW)),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        assert games[0]['home_team'] == 'New York Yankees'
+        assert games[0]['away_team'] == 'Boston Red Sox'
+
+    @patch('requests.get')
+    def test_mlb_spread_is_zero(self, mock_get):
+        """MLB uses moneyline wagering; spread is always 0."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html(_MLB_GAME_ROW)),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        assert games[0]['spread'] == 0.0
+
+    @patch('requests.get')
+    def test_mlb_home_favorite_moneyline_set_as_home_odds(self, mock_get):
+        """Line: NYY -156 with NYY at home → home_odds=-156, away_odds positive."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html(_MLB_GAME_ROW)),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        assert games[0]['home_odds'] == -156
+        assert games[0]['away_odds'] > 0
+
+    @patch('requests.get')
+    def test_mlb_away_favorite_moneyline_set_as_away_odds(self, mock_get):
+        """Line: BOS -156 with BOS away → away_odds=-156, home_odds positive."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html(_MLB_AWAY_FAV_ROW)),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        assert games[0]['away_odds'] == -156
+        assert games[0]['home_odds'] > 0
+
+    @patch('requests.get')
+    def test_mlb_underdog_odds_derived_from_vig(self, mock_get):
+        """Underdog's moneyline is derived from the favorite's using standard vig."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html(_MLB_GAME_ROW)),
+        ]
+        from datetime import date
+        games = scrape_espn_schedule(date(2025, 4, 1), date(2025, 4, 1))
+        # NYY -156 → BOS implied underdog; verify total implied > 100% (book has edge)
+        home_implied = 156 / (156 + 100)
+        away_implied = 100 / (games[0]['away_odds'] + 100)
+        assert home_implied + away_implied > 1.0  # book's edge exists
+
+
+class TestScrapeEspnScoresMlb:
+    """scrape_espn_scores() also returns MLB completed game scores."""
+
+    def _mock_resp(self, html):
+        m = MagicMock()
+        m.text = html
+        m.raise_for_status.return_value = None
+        return m
+
+    @patch('requests.get')
+    def test_returns_mlb_scores(self, mock_get):
+        """Completed MLB games are returned in the scores list."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),              # mens basketball - empty
+            self._mock_resp(_make_html('')),              # womens basketball - empty
+            self._mock_resp(_make_html(_MLB_SCORE_ROW)), # mlb
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 4, 1)])
+        assert len(scores) == 1
+        assert scores[0]['home_team'] == 'New York Yankees'
+        assert scores[0]['away_team'] == 'Boston Red Sox'
+
+    @patch('requests.get')
+    def test_mlb_scores_correct_values(self, mock_get):
+        """BOS 3, NYY 5 → home_score=5, away_score=3."""
+        mock_get.side_effect = [
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html('')),
+            self._mock_resp(_make_html(_MLB_SCORE_ROW)),
+        ]
+        from datetime import date
+        scores = scrape_espn_scores([date(2025, 4, 1)])
+        assert scores[0]['home_score'] == 5
+        assert scores[0]['away_score'] == 3
 
 
 @pytest.mark.django_db

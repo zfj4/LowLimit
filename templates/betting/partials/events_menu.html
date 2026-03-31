@@ -31,6 +31,7 @@
       <option value="" {% if not selected_sport %}selected{% endif %}>— Select Sport —</option>
       <option value="M" {% if selected_sport == 'M' %}selected{% endif %}>NCAA Men's Basketball</option>
       <option value="W" {% if selected_sport == 'W' %}selected{% endif %}>NCAA Women's Basketball</option>
+      <option value="B" {% if selected_sport == 'B' %}selected{% endif %}>Major League Baseball</option>
     </select>
   </div>
 
@@ -62,7 +63,7 @@
   {% for group in gender_groups %}
 
     <h3 class="text-xs font-bold text-bleu uppercase tracking-widest mb-3 {% if not forloop.first %}mt-8{% endif %}">
-      {% if group.grouper == 'M' %}Men's Basketball{% else %}Women's Basketball{% endif %}
+      {% if group.grouper == 'M' %}Men's Basketball{% elif group.grouper == 'W' %}Women's Basketball{% else %}Major League Baseball{% endif %}
     </h3>
 
     <div class="space-y-4">
@@ -84,10 +85,15 @@
 
       <div class="px-4 py-4">
 
-        <!-- Teams & Spread table -->
+        <!-- Teams & betting lines table -->
         <div class="grid grid-cols-2 gap-4 mb-4 text-center">
           <div>
             <p class="font-bold text-tardis">{{ event.away_team }}</p>
+            {% if event.gender == 'B' %}
+            <p class="text-xs text-bleu mt-0.5">
+              Away &nbsp;·&nbsp; Moneyline: <span class="font-semibold">{% if event.away_odds > 0 %}+{% endif %}{{ event.away_odds }}</span>
+            </p>
+            {% else %}
             <p class="text-xs text-bleu mt-0.5">
               Away &nbsp;·&nbsp; Spread:
               {% with s=event.spread %}
@@ -97,9 +103,15 @@
               {% endwith %}
             </p>
             <p class="text-xs text-bleu">Odds: {{ event.away_odds }}</p>
+            {% endif %}
           </div>
           <div>
             <p class="font-bold text-tardis">{{ event.home_team }}</p>
+            {% if event.gender == 'B' %}
+            <p class="text-xs text-bleu mt-0.5">
+              Home &nbsp;·&nbsp; Moneyline: <span class="font-semibold">{% if event.home_odds > 0 %}+{% endif %}{{ event.home_odds }}</span>
+            </p>
+            {% else %}
             <p class="text-xs text-bleu mt-0.5">
               Home &nbsp;·&nbsp; Spread:
               {% with s=event.spread %}
@@ -109,6 +121,7 @@
               {% endwith %}
             </p>
             <p class="text-xs text-bleu">Odds: {{ event.home_odds }}</p>
+            {% endif %}
           </div>
         </div>
 

@@ -215,7 +215,11 @@ def place_wager_view(request):
     if Wager.objects.filter(user=request.user, event=event).exists():
         return error_response('You already have a wager on this event.')
 
-    wager_spread = event.spread if pick == 'home' else -event.spread
+    if event.gender == 'B':
+        # MLB uses moneyline; record the odds shown at placement time
+        wager_spread = Decimal(event.home_odds if pick == 'home' else event.away_odds)
+    else:
+        wager_spread = event.spread if pick == 'home' else -event.spread
     Wager.objects.create(user=request.user, event=event, amount=amount, pick=pick, wager_spread=wager_spread)
     account.balance -= amount
     account.save()

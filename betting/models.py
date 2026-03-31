@@ -23,7 +23,7 @@ class Deposit(models.Model):
 
 
 class SportingEvent(models.Model):
-    GENDER_CHOICES = [('M', "Men's"), ('W', "Women's")]
+    GENDER_CHOICES = [('M', "Men's"), ('W', "Women's"), ('B', 'MLB')]
     STATUS_CHOICES = [('upcoming', 'Upcoming'), ('final', 'Final')]
 
     home_team = models.CharField(max_length=100)

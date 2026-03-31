@@ -249,6 +249,49 @@ class TestEventsMenuView:
         response = logged_in_client.get(reverse('events_menu') + '?sport=M')
         assert b'Duke Blue Devils' in response.content
 
+    @patch('betting.utils.generate_events')
+    def test_events_menu_has_mlb_option(self, mock_generate, logged_in_client):
+        """The sport selector includes a 'Major League Baseball' option."""
+        mock_generate.return_value = []
+        response = logged_in_client.get(reverse('events_menu'))
+        assert b'Major League Baseball' in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_mlb_events_show_moneyline_not_spread(self, mock_generate, logged_in_client, db):
+        """MLB events display 'Moneyline' label, not 'Spread: PK'."""
+        mock_generate.return_value = []
+        SportingEvent.objects.create(
+            home_team='New York Yankees',
+            away_team='Boston Red Sox',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('0.0'),
+            home_odds=-156,
+            away_odds=128,
+            gender='B',
+            week_start=get_week_start().date(),
+        )
+        response = logged_in_client.get(reverse('events_menu') + '?sport=B')
+        assert b'Moneyline' in response.content
+        assert b'Spread' not in response.content
+
+    @patch('betting.utils.generate_events')
+    def test_mlb_events_shown_when_sport_b(self, mock_generate, logged_in_client, db):
+        """MLB events (gender='B') are displayed when sport=B is selected."""
+        mock_generate.return_value = []
+        SportingEvent.objects.create(
+            home_team='New York Yankees',
+            away_team='Boston Red Sox',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('-1.5'),
+            home_odds=-150,
+            away_odds=130,
+            gender='B',
+            week_start=get_week_start().date(),
+        )
+        response = logged_in_client.get(reverse('events_menu') + '?sport=B')
+        assert b'New York Yankees' in response.content
+        assert b'Boston Red Sox' in response.content
+
 
 @pytest.mark.django_db
 class TestPlaceWagerView:
@@ -883,6 +926,42 @@ class TestWagerSpreadStorage:
         })
         wager = Wager.objects.get(user=user, event=upcoming_event)
         assert wager.wager_spread == Decimal('4.5')
+
+    @patch('betting.utils.generate_events')
+    def test_mlb_home_pick_stores_home_odds_as_wager_spread(self, mock_gen, logged_in_client, user, db):
+        """For MLB, home pick stores home_odds (moneyline) as wager_spread."""
+        mock_gen.return_value = []
+        mlb_event = SportingEvent.objects.create(
+            home_team='New York Yankees', away_team='Boston Red Sox',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('0.0'), home_odds=-156, away_odds=128,
+            gender='B', week_start=get_week_start().date(),
+        )
+        user.account.balance = Decimal('20.00')
+        user.account.save()
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': mlb_event.id, 'pick': 'home', 'amount': '5.00',
+        })
+        wager = Wager.objects.get(user=user, event=mlb_event)
+        assert wager.wager_spread == Decimal('-156')
+
+    @patch('betting.utils.generate_events')
+    def test_mlb_away_pick_stores_away_odds_as_wager_spread(self, mock_gen, logged_in_client, user, db):
+        """For MLB, away pick stores away_odds (moneyline) as wager_spread."""
+        mock_gen.return_value = []
+        mlb_event = SportingEvent.objects.create(
+            home_team='New York Yankees', away_team='Boston Red Sox',
+            event_time=timezone.now() + timezone.timedelta(days=1),
+            spread=Decimal('0.0'), home_odds=-156, away_odds=128,
+            gender='B', week_start=get_week_start().date(),
+        )
+        user.account.balance = Decimal('20.00')
+        user.account.save()
+        logged_in_client.post(reverse('place_wager'), {
+            'event_id': mlb_event.id, 'pick': 'away', 'amount': '5.00',
+        })
+        wager = Wager.objects.get(user=user, event=mlb_event)
+        assert wager.wager_spread == Decimal('128')
 
 
 @pytest.mark.django_db
