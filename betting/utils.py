@@ -125,7 +125,7 @@ def _abbr_matches(abbr, team_name):
         return True
     # Initials match: first letter of each word, optionally followed by 'U'
     initials = ''.join(w[0] for w in team_name.upper().split() if w)
-    return abbr.startswith(initials)
+    return len(initials) >= 2 and abbr.startswith(initials)
 
 
 def scrape_espn_schedule(start_date, end_date, sport_genders=None):

@@ -20,6 +20,7 @@ from betting.utils import (
     update_event_results,
     generate_events,
     WEEKLY_LIMIT,
+    _abbr_matches,
 )
 
 
@@ -1094,3 +1095,27 @@ class TestUpdateEventResults:
         wager2.refresh_from_db()
         assert wager1.status != 'pending'
         assert wager2.status != 'pending'
+
+
+class TestAbbrMatches:
+    """_abbr_matches() correctly identifies whether an ESPN abbreviation matches a team name."""
+
+    def test_prefix_match(self):
+        assert _abbr_matches('PUR', 'Purdue')
+
+    def test_containment_match(self):
+        assert _abbr_matches('CONN', 'UConn')
+
+    def test_multi_word_initials_match(self):
+        assert _abbr_matches('ISU', 'Iowa State')
+        assert _abbr_matches('MSU', 'Michigan State')
+
+    def test_single_word_team_abbr_matches_prefix(self):
+        assert _abbr_matches('ARI', 'Arizona')
+
+    def test_single_word_team_not_false_matched_by_different_abbr(self):
+        """'ATL' must not match 'Arizona' — single-word initials ('A') are too short."""
+        assert not _abbr_matches('ATL', 'Arizona')
+
+    def test_atl_matches_atlanta(self):
+        assert _abbr_matches('ATL', 'Atlanta')
