@@ -22,6 +22,7 @@ Open your terminal, navigate to the project root folder and run:
 * **Install Requirements:** `pip install -r dependencies.txt`
 
 ### 3. Configure Environment Variables
+**(Only if using Gemini Flash to return spreads and odds. Current version doesn't do this.)**
 * Copy `.env.example` to `.env`: `cp .env.example .env`
 * Open `.env` and set your **Google API key** (required for AI-generated game lists):
   ```
