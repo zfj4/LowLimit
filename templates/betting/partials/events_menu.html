@@ -3,7 +3,7 @@
 
   <!-- Header -->
   <div class="flex items-center justify-between mb-4">
-    <h2 class="text-xl font-bold text-tardis">NCAA Basketball — This Week</h2>
+    <h2 class="text-xl font-bold text-tardis">This Week's Matchups</h2>
     <button hx-get="{% url 'events_menu' %}?refresh=1{% if selected_sport %}&sport={{ selected_sport }}{% endif %}"
             hx-target="#content"
             hx-swap="innerHTML"
